@@ -7,11 +7,12 @@
 
 <PageTitle>Video Test</PageTitle>
 
+<div>Frame: @count</div>
 <img src="@imagePath" id="frame">
 
 @code {
     public string imagePath = "/Videos/current_frame0.bmp" + "?DummyId=" + DateTime.Now.Ticks;
-    private Timer timer = new Timer(33);
+    private Timer timer = new Timer(20);
 
     private int count = 0;
 
@@ -26,11 +27,17 @@
     {
         _ = InvokeAsync(() =>
        {    
-            if (System.IO.File.Exists("/home/brady/NOCTIS/frontend/wwwroot/Videos/current_frame" + (count + 2) + ".bmp"))
+            try {
+
+                if (System.IO.File.Exists("/home/brady/Projects/NOCTIS/frontend/wwwroot/Videos/current_frame" + (count + 2) + ".bmp"))
+                {
+                    imagePath = "/Videos/current_frame" + count++ + ".bmp" + "?DummyId=" + DateTime.Now.Ticks;
+                } else if (!System.IO.File.Exists("/home/brady/Projects/NOCTIS/frontend/wwwroot/Videos/current_frame2.bmp")){
+                    count = 0;
+                }
+            } catch (Exception e)
             {
-                imagePath = "/Videos/current_frame" + count++ + ".bmp" + "?DummyId=" + DateTime.Now.Ticks;
-            } else if (!System.IO.File.Exists("/home/brady/NOCTIS/frontend/wwwroot/Videos/current_frame2.bmp")){
-                count = 0;
+                Console.WriteLine(e);
             }
 
             StateHasChanged();

@@ -1,0 +1,23 @@
+﻿@page "/mapview"
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Map View</PageTitle>
+
+<h1>Map View</h1>
+
+<p>Draw the drones geofence below.</p>
+<div id="map" style="height:640px;width:100%;">
+</div>
+
+@code{
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("initMap", null);
+            StateHasChanged();
+        }
+
+    }
+}
