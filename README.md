@@ -2,7 +2,7 @@
 NOCTIS contains all the control and GUI software intended to control a Parrot ANAFI USA drone. It's purpose to find and tracking target out of a defined area using the map editor.
 
 # Setup
-NOCTIS was developed on Ubuntu 22.04, however as long as your environment supports Olympe the software should work. NOTE: Sphinx only supports Linux.
+NOCTIS was developed on Ubuntu 22.04, however as long as your environment supports [Olympe](https://developer.parrot.com/docs/olympe/index.html) the software should work. NOTE: [Sphinx](https://developer.parrot.com/docs/sphinx/index.html) only supports Linux.
 
 ## Dotnet
 You will need at least Dotnet 7.0. The following commands should work for Ubuntu 22.04.
