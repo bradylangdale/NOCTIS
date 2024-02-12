@@ -28,9 +28,9 @@ sudo apt install parrot-ue4-empty
 ```
 
 ## API Key
-To run the frontend of NOCTIS you must add your API key for Google Maps otherwise the map editor will not function. I recommend adding a new file under `frontend` and adding the following code snippet.
+To run the WebUI of NOCTIS you must add your API key for Google Maps otherwise the map editor will not function. I recommend adding a new file under `WebUI` and adding the following code snippet.
 ```C#
-namespace frontend.Env
+namespace WebUI.Env
 {
   public class Vars
   {
@@ -39,9 +39,9 @@ namespace frontend.Env
 }
 ```
 ## Run
-To launch the GUI first navigate to `frontend` and start the `dotnet` project.
+To launch the GUI first navigate to `WebUI` and start the `dotnet` project.
 ```bash
-cd frontend
+cd ./WebUI
 dotnet run
 ```
 

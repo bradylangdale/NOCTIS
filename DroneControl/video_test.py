@@ -33,9 +33,9 @@ class StreamingExample:
     def __init__(self):
         # Create the olympe.Drone object from its IP address
         self.drone = olympe.Drone(DRONE_IP)
-        subprocess.run('rm -rf ./frontend/wwwroot/Videos/'.split(' '))
-        subprocess.run('mkdir ./frontend/wwwroot/Videos/'.split(' '))
-        self.tempd = './frontend/wwwroot/Videos/'#tempfile.mkdtemp(prefix="olympe_streaming_test_")
+        subprocess.run('rm -rf ./WebUI/wwwroot/Videos/'.split(' '))
+        subprocess.run('mkdir ./WebUI/wwwroot/Videos/'.split(' '))
+        self.tempd = './WebUI/wwwroot/Videos/'#tempfile.mkdtemp(prefix="olympe_streaming_test_")
         print(f"Olympe streaming example output dir: {self.tempd}")
         self.h264_frame_stats = []
         self.h264_stats_file = open(os.path.join(self.tempd, "h264_stats.csv"), "w+")
@@ -127,10 +127,10 @@ class StreamingExample:
 
                 # Use OpenCV to convert the yuv frame to RGB
                 cv2frame = cv2.cvtColor(yuv_frame.as_ndarray(), cv2_cvt_color_flag)
-                cv2.imwrite('./frontend/wwwroot/Videos/current_frame' + str(count) + '.bmp', cv2frame)
+                cv2.imwrite('./WebUI/wwwroot/Videos/current_frame' + str(count) + '.bmp', cv2frame)
                 count += 1
                 
-                #subprocess.run('ffmpeg -loglevel quiet -hide_banner -y -i ./frontend/wwwroot/Videos/streaming.mp4 -g 52 -c:a aac -b:a 64k -b:v 448k -f mp4 -movflags frag_keyframe+empty_moov ./frontend/wwwroot/Videos/frag.mp4'.split(' '))
+                #subprocess.run('ffmpeg -loglevel quiet -hide_banner -y -i ./WebUI/wwwroot/Videos/streaming.mp4 -g 52 -c:a aac -b:a 64k -b:v 448k -f mp4 -movflags frag_keyframe+empty_moov ./WebUI/wwwroot/Videos/frag.mp4'.split(' '))
             except Exception as e:
                 print(e)
 

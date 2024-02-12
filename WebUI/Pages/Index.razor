@@ -2,8 +2,10 @@
 
 @using System
 @using System.Timers
+@using WebUI.Data
 
 @inject NavigationManager nav
+@inject DroneControlService drone
 
 <PageTitle>Video Test</PageTitle>
 
@@ -29,10 +31,10 @@
        {    
             try {
 
-                if (System.IO.File.Exists("/home/brady/Projects/NOCTIS/frontend/wwwroot/Videos/current_frame" + (count + 2) + ".bmp"))
+                if (System.IO.File.Exists("/home/brady/Projects/NOCTIS/WebUI/wwwroot/Videos/current_frame" + (count + 2) + ".bmp"))
                 {
                     imagePath = "/Videos/current_frame" + count++ + ".bmp" + "?DummyId=" + DateTime.Now.Ticks;
-                } else if (!System.IO.File.Exists("/home/brady/Projects/NOCTIS/frontend/wwwroot/Videos/current_frame2.bmp")){
+                } else if (!System.IO.File.Exists("/home/brady/Projects/NOCTIS/WebUI/wwwroot/Videos/current_frame2.bmp")){
                     count = 0;
                 }
             } catch (Exception e)
