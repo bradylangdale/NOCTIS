@@ -1,39 +1,107 @@
-using System;
-using System.Threading;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using NetMQ;
 using NetMQ.Sockets;
 
 namespace WebUI.Data
 {
-    public class DroneControlService
+    public class DroneControlService : IDisposable
     {
+        private Thread thread;
+        private bool running = true;
+        private Queue<String> outQueue;
+        private Queue<String> inQueue;
+
         public DroneControlService()
         {
-            var thread = new Thread(() =>
-            {
-                using (var server = new ResponseSocket("@tcp://*:5555"))
-                {
-                    while (true)
-                    {
-                        var message = server.ReceiveFrameString();
-                        Console.WriteLine("Received: " + message);
-                        server.SendFrame("World");
-                    }
-                }
-            });
-            thread.Start();
+            outQueue = new Queue<string>();
+            inQueue = new Queue<string>();
 
             RunCommandWithBash("/bin/python3 /home/brady/Projects/NOCTIS/DroneControl/dronecontrol.py");
+
+            Thread.Sleep(2000);
+
+            thread = new Thread(() =>
+            {
+                using (var client = new RequestSocket())
+                {
+                    client.Connect("tcp://localhost:5555");
+                    while (running)
+                    {
+                        lock (outQueue)
+                        {
+                            if (outQueue.Count > 0)
+                            {
+                                try {
+                                    client.SendFrame(outQueue.Dequeue());
+                                    
+                                    string message = client.ReceiveFrameString();
+
+                                    // ok now do something
+                                    lock (inQueue)
+                                    {
+                                        inQueue.Enqueue(message);
+                                    }
+                                } catch (Exception e) {
+                                    Console.WriteLine(e);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Console.WriteLine("DCS Thread Exiting.");
+            });
+            thread.Start();
+        }
+
+        public void SayHello()
+        {
+            lock (outQueue)
+            {
+                outQueue.Enqueue("Hello!");
+            }
+        }
+
+        public byte[] GetCurrentFrame()
+        {
+            lock (outQueue)
+            {
+                outQueue.Enqueue("GetCurrentFrame");
+            }
+
+            string rsp = "";
+            while(!CheckResponses(ref rsp));
+
+            return Encoding.GetEncoding("ISO-8859-1").GetBytes(rsp);
+        }
+
+        public bool CheckResponses(ref string response)
+        {
+            lock (inQueue)
+            {
+                if (inQueue.Count > 0)
+                {
+                    response = inQueue.Dequeue();
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            running = false;
+            thread.Interrupt();
+
+            thread.Join(1000);
         }
 
         private static void RunCommandWithBash(string command)
         {
             Process.Start("/bin/bash", $"-c \"{command}\"");
-
-            //var output = process.StandardOutput.ReadToEnd();
-
-            //Console.WriteLine(output);
         }   
     }
 }

@@ -9,14 +9,26 @@
 
 <PageTitle>Video Test</PageTitle>
 
-<div>Frame: @count</div>
 <img src="@imagePath" id="frame">
 
+<p>
+    <button @onclick="MsgDCS">
+        Say Hello!
+    </button>
+</p>
+
+<p>
+    <label>
+        @response
+    </label>
+</p>
+
 @code {
-    public string imagePath = "/Videos/current_frame0.bmp" + "?DummyId=" + DateTime.Now.Ticks;
-    private Timer timer = new Timer(20);
+    public string imagePath = "/Videos/current_frame.bmp" + "?DummyId=" + DateTime.Now.Ticks;
+    private Timer timer = new Timer(100);
 
     private int count = 0;
+    public string response = "N/A";
 
     protected override void OnInitialized()
     {
@@ -25,20 +37,34 @@
         timer.Start(); 
     }
 
+    public void MsgDCS()
+    {
+        drone.SayHello();
+
+        while (!drone.CheckResponses(ref response));
+    }
+
     private void OnTimerCallback()
     {
         _ = InvokeAsync(() =>
        {    
             try {
+                string str_count = count.ToString();
+                str_count = (str_count == "") ? "0" : str_count; 
 
-                if (System.IO.File.Exists("/home/brady/Projects/NOCTIS/WebUI/wwwroot/Videos/current_frame" + (count + 2) + ".bmp"))
-                {
-                    imagePath = "/Videos/current_frame" + count++ + ".bmp" + "?DummyId=" + DateTime.Now.Ticks;
-                } else if (!System.IO.File.Exists("/home/brady/Projects/NOCTIS/WebUI/wwwroot/Videos/current_frame2.bmp")){
-                    count = 0;
-                }
-            } catch (Exception e)
-            {
+                imagePath = "/Data/Videos/current_frame" + str_count + ".bmp" + "?DummyId=" + DateTime.Now.Ticks;
+
+                count += 1;
+                count %= 8;
+
+                str_count = count.ToString();
+                str_count = (str_count == "") ? "0" : str_count; 
+
+                System.IO.File.WriteAllBytes(
+                        "/home/brady/Projects/NOCTIS/WebUI/wwwroot/Data/Videos/current_frame" + str_count + ".bmp",
+                        drone.GetCurrentFrame()
+                    );
+            } catch (Exception e) {
                 Console.WriteLine(e);
             }
 
