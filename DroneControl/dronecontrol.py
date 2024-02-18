@@ -47,6 +47,8 @@ class ZMQ_Manager:
             if message == 'Hello!':
                 socket.send_string('Server Says Hi!')
 
+                drone.stop()
+                drone.start()
                 t = threading.Thread(target=drone.fly)
                 t.start()
             elif message == 'GetCurrentFrame':
@@ -77,10 +79,11 @@ class StreamingExample:
     def __init__(self):
         # Create the olympe.Drone object from its IP address
         self.drone = olympe.Drone(DRONE_IP)
-        #subprocess.run('rm -rf /home/brady/Projects/NOCTIS/WebUI/wwwroot/Data/'.split(' '))
-        subprocess.run(f'mkdir {os.getcwd()}/wwwroot/Data/'.split(' '))
-        subprocess.run(f'mkdir {os.getcwd()}/wwwroot/Data/Videos/'.split(' '))
+        
+        subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/'.split(' '))
+        subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/Videos/'.split(' '))
         self.tempd = f'{os.getcwd()}/WebUI/wwwroot/Data/'#tempfile.mkdtemp(prefix="olympe_streaming_test_")
+        
         print(f"Olympe streaming example output dir: {self.tempd}")
 
         self.video_thread = None
@@ -98,7 +101,10 @@ class StreamingExample:
     def stop(self):
         assert self.drone.disconnect()
         self.running = False
-        self.video_thread.stop()
+        
+        time.sleep(10)
+        self.video_thread.join()
+
 
     def frame_processing(self):
         command = [
@@ -123,7 +129,7 @@ class StreamingExample:
 
                 # Use OpenCV to convert the yuv frame to RGB
                 #cv2frame = cv2.cvtColor(yuv_frame.as_ndarray(), cv2_cvt_color_flag)
-                self.current_frame = cv2.imencode(".bmp", frame)[1].tobytes()
+                self.current_frame = cv2.imencode(".jpg", frame)[1].tobytes()
                 #cv2.imwrite('/home/brady/Projects/NOCTIS/WebUI/wwwroot/Data/current_frame.bmp', cv2frame)
                 #count += 1
                 
@@ -133,6 +139,8 @@ class StreamingExample:
                 time.sleep(500)
                 p = subprocess.Popen(command, stdout=subprocess.PIPE)
                 print(e)
+
+        p.kill()
 
     def fly(self):
         # Takeoff, fly, land, ...
