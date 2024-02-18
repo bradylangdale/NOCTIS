@@ -79,10 +79,11 @@ class StreamingExample:
     def __init__(self):
         # Create the olympe.Drone object from its IP address
         self.drone = olympe.Drone(DRONE_IP)
-        #subprocess.run('rm -rf /home/noctis/NOCTIS/WebUI/wwwroot/Data/'.split(' '))
-        subprocess.run('mkdir /home/noctis/NOCTIS/WebUI/wwwroot/Data/'.split(' '))
-        subprocess.run('mkdir /home/noctis/NOCTIS/WebUI/wwwroot/Data/Videos/'.split(' '))
-        self.tempd = '/home/noctis/NOCTIS/WebUI/wwwroot/Data/'#tempfile.mkdtemp(prefix="olympe_streaming_test_")
+        
+        subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/'.split(' '))
+        subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/Videos/'.split(' '))
+        self.tempd = f'{os.getcwd()}/WebUI/wwwroot/Data/'#tempfile.mkdtemp(prefix="olympe_streaming_test_")
+        
         print(f"Olympe streaming example output dir: {self.tempd}")
 
         self.video_thread = None
@@ -100,13 +101,15 @@ class StreamingExample:
     def stop(self):
         assert self.drone.disconnect()
         self.running = False
+        
         time.sleep(10)
         self.video_thread.join()
+
 
     def frame_processing(self):
         command = [
             'ffmpeg',
-            '-i', 'rtsp://10.202.0.1/live',
+            '-i', f'rtsp://{DRONE_IP}/live',
             '-f', 'rawvideo',
             '-pix_fmt', 'bgr24',
             'pipe:'

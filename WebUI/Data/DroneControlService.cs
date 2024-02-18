@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using System.Diagnostics;
 using System.Text;
 using NetMQ;
@@ -18,7 +19,8 @@ namespace WebUI.Data
             outQueue = new Queue<string>();
             inQueue = new Queue<string>();
 
-            RunCommandWithBash("/home/noctis/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 /home/noctis/NOCTIS/DroneControl/dronecontrol.py");
+            string home = System.Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + home +"/NOCTIS/DroneControl/dronecontrol.py");
 
             Thread.Sleep(2000);
 

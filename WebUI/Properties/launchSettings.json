@@ -3,7 +3,7 @@
     "windowsAuthentication": false,
     "anonymousAuthentication": true,
     "iisExpress": {
-      "applicationUrl": "http://10.0.4.13:43790",
+      "applicationUrl": "http://*:43790",
       "sslPort": 44341
     }
   },
@@ -13,7 +13,7 @@
       "dotnetRunMessages": true,
       "launchBrowser": true,
       "hotReloadEnabled": false,
-      "applicationUrl": "http://10.0.4.13:5144",
+      "applicationUrl": "http://*:5144",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -23,7 +23,7 @@
       "dotnetRunMessages": true,
       "launchBrowser": true,
       "hotReloadEnabled": false,
-      "applicationUrl": "https://10.0.4.13:7018;http://10.0.4.13:5144",
+      "applicationUrl": "https://*:7018;http://*:5144",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
