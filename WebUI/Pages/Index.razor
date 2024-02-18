@@ -24,16 +24,15 @@
 </p>
 
 @code {
-    public string imagePath = "/Data/Videos/current_frame0.jpg" + "?DummyId=" + DateTime.Now.Ticks;
-    private Timer timer = new Timer(250);
+    public string imagePath = "";
+    private Timer timer = new Timer(30);
 
-    private int count = 0;
     public string response = "N/A";
 
     protected override void OnInitialized()
     {
         timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
-        timer.AutoReset = false;
+        timer.AutoReset = true;
         timer.Start(); 
     }
 
@@ -49,30 +48,11 @@
         _ = InvokeAsync(() =>
        {    
             try {
-                timer.Stop();
-
-                string str_count = count.ToString();
-                str_count = (str_count == "") ? "0" : str_count; 
-
-                imagePath = "/Data/Videos/current_frame" + str_count + ".jpg" + "?DummyId=" + DateTime.Now.Ticks;
-
-                count += 1;
-                count %= 8;
-
-                str_count = count.ToString();
-                str_count = (str_count == "") ? "0" : str_count; 
-
-                System.IO.File.WriteAllBytes(
-                        "/home/noctis/NOCTIS/WebUI/wwwroot/Data/Videos/current_frame" + str_count + ".jpg",
-                        drone.GetCurrentFrame()
-                    );
-
-                timer.Start();
+                imagePath = drone.GetCurrentFrame();
+                StateHasChanged();
             } catch (Exception e) {
                 Console.WriteLine(e);
             }
-
-            StateHasChanged();
         });
     }
 }
