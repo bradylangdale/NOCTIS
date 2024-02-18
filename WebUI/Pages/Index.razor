@@ -61,7 +61,7 @@
                 str_count = (str_count == "") ? "0" : str_count; 
 
                 System.IO.File.WriteAllBytes(
-                        "/home/brady/Projects/NOCTIS/WebUI/wwwroot/Data/Videos/current_frame" + str_count + ".bmp",
+                        "/home/noctis/NOCTIS/WebUI/wwwroot/Data/Videos/current_frame" + str_count + ".bmp",
                         drone.GetCurrentFrame()
                     );
             } catch (Exception e) {

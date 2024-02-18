@@ -18,7 +18,7 @@ namespace WebUI.Data
             outQueue = new Queue<string>();
             inQueue = new Queue<string>();
 
-            RunCommandWithBash("/bin/python3 /home/brady/Projects/NOCTIS/DroneControl/dronecontrol.py");
+            RunCommandWithBash("/home/noctis/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 /home/noctis/NOCTIS/DroneControl/dronecontrol.py");
 
             Thread.Sleep(2000);
 
