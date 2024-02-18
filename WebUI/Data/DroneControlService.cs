@@ -86,6 +86,8 @@ namespace WebUI.Data
                                 Console.WriteLine(e);
                             }
                         }
+
+                        Thread.Sleep(30);
                     }
                 }
 
