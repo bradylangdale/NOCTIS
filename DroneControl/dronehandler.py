@@ -13,7 +13,7 @@ from olympe.messages.ardrone3.Piloting import moveBy
 from olympe.messages.ardrone3.PilotingState import FlyingStateChanged
 from olympe.messages.ardrone3.PilotingSettings import MaxTilt
 from olympe.messages.ardrone3.PilotingSettingsState import MaxTiltChanged
-from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChangeds
+from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChanged
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
@@ -55,6 +55,7 @@ class DroneHandler:
     def frame_processing(self):
         command = [
             'ffmpeg',
+            '-loglevel', 'quiet',
             '-i', f'rtsp://{DRONE_IP}/live',
             '-f', 'rawvideo',
             '-pix_fmt', 'bgr24',

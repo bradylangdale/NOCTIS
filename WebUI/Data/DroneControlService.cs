@@ -23,7 +23,9 @@ namespace WebUI.Data
             inQueue = new Queue<string>();
 
             string home = System.Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + home +"/Projects/NOCTIS/DroneControl/dronecontrol.py");
+            string cwd = System.IO.Directory.GetCurrentDirectory().Replace("WebUI", "");
+            
+            RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
 
             Thread.Sleep(2000);
 
