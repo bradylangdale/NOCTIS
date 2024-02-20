@@ -6,14 +6,19 @@ import os
 import subprocess
 import cv2
 import numpy as np
+from enum import Enum
 
 import olympe
 from olympe.messages.ardrone3.Piloting import TakeOff, Landing
 from olympe.messages.ardrone3.Piloting import moveBy
-from olympe.messages.ardrone3.PilotingState import FlyingStateChanged
+from olympe.messages.ardrone3.PilotingState import FlyingStateChanged, AltitudeAboveGroundChanged
 from olympe.messages.ardrone3.PilotingSettings import MaxTilt
 from olympe.messages.ardrone3.PilotingSettingsState import MaxTiltChanged
 from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChanged
+from olympe.messages.common.CommonState import BatteryStateChanged, SensorsStatesListChanged
+from olympe.messages.camera import camera_states
+from olympe.enums.common.CommonState import SensorsStatesListChanged_SensorName as Sensor
+
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
@@ -21,20 +26,33 @@ DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
 DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT")
 
 
-class DroneHandler:
+class DroneState(Enum):
+    Idling = 0
+    TakingOff = 1
+    Surveying = 2
+    Chasing = 3
+    Returning = 4
+    Landing = 5
+    Repositioning = 6
+    Charging = 7
+
+
+class DroneHandler(olympe.EventListener):
+
     def __init__(self):
+        super().__init__()
+
         # Create the olympe.Drone object from its IP address
         self.drone = olympe.Drone(DRONE_IP)
         
         subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/'.split(' '))
         subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/Videos/'.split(' '))
-        self.tempd = f'{os.getcwd()}/WebUI/wwwroot/Data/'#tempfile.mkdtemp(prefix="olympe_streaming_test_")
-        
-        print(f"Olympe streaming example output dir: {self.tempd}")
 
         self.video_thread = None
         self.running = False
         self.current_frame = None
+        self.survey_complete = True
+        self.state = DroneState.Idling
 
     def start(self):
         # Connect to drone
@@ -74,13 +92,8 @@ class DroneHandler:
                 frame = np.frombuffer(raw_frame, np.uint8)
                 frame = frame.reshape((height, width, 3))
 
-                # Use OpenCV to convert the yuv frame to RGB
-                #cv2frame = cv2.cvtColor(yuv_frame.as_ndarray(), cv2_cvt_color_flag)
                 self.current_frame = cv2.imencode(".jpg", frame)[1].tobytes()
-                #cv2.imwrite('/home/brady/Projects/NOCTIS/WebUI/wwwroot/Data/current_frame.bmp', cv2frame)
-                #count += 1
                 
-                #subprocess.run('ffmpeg -loglevel quiet -hide_banner -y -i ./WebUI/wwwroot/Videos/streaming.mp4 -g 52 -c:a aac -b:a 64k -b:v 448k -f mp4 -movflags frag_keyframe+empty_moov ./WebUI/wwwroot/Videos/frag.mp4'.split(' '))
             except Exception as e:
                 p.kill()
                 time.sleep(500)
@@ -89,9 +102,72 @@ class DroneHandler:
 
         p.kill()
 
+    #@olympe.listen_event(AltitudeAboveGroundChanged(_policy='wait'))
+    #def onAltitudeAboveGroundChanged(self, event, scheduler):
+    #    # TODO: adjust next target to ensure that the drone isn't too close to the ground
+    #    pass
+
     def fly(self):
-        # Takeoff, fly, land, ...
-        print("Takeoff if necessary...")
+        self.survey_complete = False
+        self.state = DroneState.TakingOff
+
+        while not self.survey_complete:
+            if self.state == DroneState.Idling:
+                self.survey_complete = True
+            elif self.state == DroneState.TakingOff:
+                self.takingoff()
+            elif self.state == DroneState.Surveying:
+                self.surveying()
+            elif self.state == DroneState.Chasing:
+                self.chasing()
+            elif self.state == DroneState.Returning:
+                self.returning()
+            elif self.state == DroneState.Landing:
+                self.landing()
+            elif self.state == DroneState.Repositioning:
+                self.repositioning()
+            elif self.state == DroneState.Charging:
+                self.charging()
+
+    def takingoff(self):
+        # check battery level
+        battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
+        if battery_level < 90:
+            self.state = DroneState.Charging
+            return
+
+        # check cameras running
+        if self.drone.get_state(camera_states)["active_cameras"] == 0:
+            self.state = DroneState.Idling
+            return
+
+        # check drone sensors
+        sensors = self.drone.get_state(SensorsStatesListChanged)
+
+        if sensors[Sensor.IMU]['sensorState'] == 0:
+            self.state = DroneState.Idling
+            return
+
+        if sensors[Sensor.magnetometer]['sensorState'] == 0:
+            self.state = DroneState.Idling
+            return
+        
+        if sensors[Sensor.barometer]['sensorState'] == 0:
+            self.state = DroneState.Idling
+            return
+        
+        if sensors[Sensor.GPS]['sensorState'] == 0:
+            self.state = DroneState.Idling
+            return
+        
+        if sensors[Sensor.ultrasound]['sensorState'] == 0:
+            self.state = DroneState.Idling
+            return
+        
+        if sensors[Sensor.vertical_camera]['sensorState'] == 0:
+            self.state = DroneState.Idling
+            return
+        
         self.drone(
             FlyingStateChanged(state="hovering", _policy="check")
             | FlyingStateChanged(state="flying", _policy="check")
@@ -105,13 +181,24 @@ class DroneHandler:
                 )
             )
         ).wait()
+
+        # TODO: determine if we need to land or go into idle
+        self.state = DroneState.Surveying
+
+    def surveying(self):
         maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
         self.drone(MaxTilt(maxtilt)).wait()
 
-        for i in range(4):
-            print(f"Moving by ({i + 1}/4)...")
-            self.drone(moveBy(10, 0, 0, math.pi, _timeout=20)).wait().success()
+        self.drone(moveBy(0, 0, -10, 0, _timeout=20)).wait().success()
 
-        print("Landing...")
+        for i in range(4):
+            self.drone(moveBy(50, 0, 0, math.pi, _timeout=20)).wait().success()
+
+        self.state = DroneState.Landing
+
+    def landing(self):
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
-        print("Landed\n")
+
+        self.state = DroneState.Idling
+
+
