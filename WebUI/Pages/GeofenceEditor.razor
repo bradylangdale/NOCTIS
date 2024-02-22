@@ -1,0 +1,41 @@
+﻿@page "/geofenceditor"
+@using WebUI.Data
+
+@inject DroneControlService drone
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Geofence Editor</PageTitle>
+
+<h1>Geofence Editor</h1>
+
+<p>Draw the drones geofence below.</p>
+<p><button @onclick="SaveGeofence">Save Map</button><label> @response</label></p>
+<div id="map" style="height:640px;width:100%;"></div>
+
+@code{
+    public string response = "";
+
+    public async void SaveGeofence()
+    {
+        var data = await JSRuntime.InvokeAsync<Object>("geofenceEditor.getData", null);
+        drone.SendCommand("Geofence: " + data);
+
+        while (!drone.CheckResponses(ref response));
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            drone.SendCommand("GetGeofence");
+
+            string data = "";
+            while (!drone.CheckResponses(ref data));
+
+            await JSRuntime.InvokeVoidAsync("geofenceEditor.setData", data);
+            await JSRuntime.InvokeVoidAsync("initGeofenceEditor", null);
+            StateHasChanged();
+        }
+
+    }
+}

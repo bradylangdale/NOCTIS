@@ -4,24 +4,15 @@
 @using System.Timers
 @using WebUI.Data
 
-@inject NavigationManager nav
 @inject DroneControlService drone
 
 <PageTitle>Live Feed</PageTitle>
 
-<img src="@imagePath" style="max-width: 100%;" id="frame"/>
+<h1>Live Feed</h1>
 
-<p>
-    <button @onclick="MsgDCS">
-        Fly a loop!
-    </button>
-</p>
-
-<p>
-    <label>
-        @response
-    </label>
-</p>
+<p><img src="@imagePath" style="max-width: 100%;" id="frame"/></p>
+<p><button @onclick="TestFlight">Fly a loop!</button></p>
+<p><label>@response</label></p>
 
 @code {
     public string imagePath = "";
@@ -36,9 +27,9 @@
         timer.Start(); 
     }
 
-    public void MsgDCS()
+    public void TestFlight()
     {
-        drone.SayHello();
+        drone.SendCommand("TestFlight");
 
         while (!drone.CheckResponses(ref response));
     }

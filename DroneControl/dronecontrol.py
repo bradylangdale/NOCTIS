@@ -1,11 +1,7 @@
-from dronehandler import DroneHandler
 from zmqmanager import ZMQManager
 
 
 # this is the entry point for the drone control software
 if __name__ == "__main__":
-    drone = DroneHandler()
-
-    # init drone stream
-    drone.start()
-    zmqManager = ZMQManager(drone)
+    # TODO: determine if this should just be removed and make zmq the entrypoint
+    zmqManager = ZMQManager()

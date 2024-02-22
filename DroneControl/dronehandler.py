@@ -56,18 +56,25 @@ class DroneHandler(olympe.EventListener):
 
     def start(self):
         # Connect to drone
-        assert self.drone.connect(retry=3)
-        self.running = True
+        if self.drone.connect(retry=3):
+            self.running = True
 
-        self.video_thread = Thread(target=self.frame_processing)
-        self.video_thread.start()
+            self.video_thread = Thread(target=self.frame_processing)
+            self.video_thread.start()
+
+        return False
 
     def stop(self):
-        assert self.drone.disconnect()
-        self.running = False
-        
-        time.sleep(10)
-        self.video_thread.join()
+        if self.drone.disconnect():
+            if self.running:
+                self.running = False
+                
+                time.sleep(10)
+                self.video_thread.join()
+            
+            return True
+
+        return False
 
 
     def frame_processing(self):
