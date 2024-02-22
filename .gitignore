@@ -1,0 +1,7 @@
+WebUI/bin/
+WebUI/obj/
+WebUI/env/environment.cs
+WebUI/wwwroot/Data/
+.vscode/
+__pycache__/
+planet.yaml
