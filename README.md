@@ -4,9 +4,9 @@ NOCTIS contains all the control and GUI software intended to control a Parrot AN
 # Setup
 NOCTIS was developed on Ubuntu 22.04, however as long as your environment supports [Olympe](https://developer.parrot.com/docs/olympe/index.html) the software should work.
 
-NOCTIS also supports the Raspberry Pi 4B as this was the primary target for software. I will later include build instructions for compiling Olympe from source on the RPi but TBA for now.
+NOCTIS also supports the Raspberry Pi 4B as this was the primary target for the software. I will later include build instructions for compiling Olympe from source on the RPi but TBA for now.
 
-NOTE: [Sphinx](https://developer.parrot.com/docs/sphinx/index.html) only supports Linux.
+NOTE: [Sphinx](https://developer.parrot.com/docs/sphinx/index.html) only supports certain Linux Distros (Ubuntu/Debian).
 
 ## Dotnet
 You will need at least Dotnet 7.0. The following commands should work for Ubuntu 22.04.
@@ -36,7 +36,7 @@ sudo apt install parrot-ue4-planet
 ```
 
 ## API Keys
-To run the WebUI of NOCTIS you must add your API key for Google Maps otherwise the map editor will not function. I have include 'environment.cs.example' for you use and replace with your own API key.
+To run the WebUI of NOCTIS you must add your API key for Google Maps otherwise the map editor will not function. I have include `environment.cs.example` for you use and replace with your own API key. Be sure to save it as `environment.cs`.
 ```C#
 namespace WebUI.Env
 {
@@ -46,7 +46,7 @@ namespace WebUI.Env
   }
 }
 ```
-Additionally, if you'd like to use Google Maps with Parrot Sphinx for simulation at specific coordinates be sure to add you keys to 'planet.yaml.example' and save it as 'planet.yaml'.
+Additionally, if you'd like to use Google Maps with Parrot Sphinx for simulation at specific coordinates be sure to add you keys to `planet.yaml.example` and save it as `planet.yaml`.
 ```yaml
 Cesium:
   - GoogleKey: '{YOUR_GOOGLE_API_KEY}'
