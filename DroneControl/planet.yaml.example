@@ -1,0 +1,5 @@
+Cesium:
+  - GoogleKey: '{YOUR_GOOGLE_API_KEY}'
+    CesiumToken: '{YOUR_CESIUM_API_KEY}'
+    TilesetSource: 'Google'
+    IonAssetId: 2275207

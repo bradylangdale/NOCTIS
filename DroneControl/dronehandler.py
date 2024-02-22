@@ -71,8 +71,12 @@ class DroneHandler(olympe.EventListener):
 
 
     def frame_processing(self):
+
+        # TODO: check if I can just output jpeg instead raw
         command = [
             'ffmpeg',
+            '-probesize', '32',
+            '-analyzeduration', '0',
             '-loglevel', 'quiet',
             '-i', f'rtsp://{DRONE_IP}/live',
             '-f', 'rawvideo',
@@ -80,6 +84,7 @@ class DroneHandler(olympe.EventListener):
             'pipe:'
         ]
 
+        # TODO: fix this so when the application is closed stdout is reclaimed
         p = subprocess.Popen(command, stdout=subprocess.PIPE)
 
         width = 1280
@@ -189,7 +194,7 @@ class DroneHandler(olympe.EventListener):
         maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
         self.drone(MaxTilt(maxtilt)).wait()
 
-        self.drone(moveBy(0, 0, -10, 0, _timeout=20)).wait().success()
+        self.drone(moveBy(-100, 0, -25, 0, _timeout=20)).wait().success()
 
         for i in range(4):
             self.drone(moveBy(50, 0, 0, math.pi, _timeout=20)).wait().success()

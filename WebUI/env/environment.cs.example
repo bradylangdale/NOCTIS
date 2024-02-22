@@ -1,0 +1,7 @@
+namespace WebUI.Env
+{
+    public class Vars
+    {
+        public const string API_KEY = "{YOUR_API_KEY}";
+    }
+}
