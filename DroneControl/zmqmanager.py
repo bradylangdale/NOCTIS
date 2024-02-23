@@ -1,7 +1,9 @@
 import zmq
 from threading import Thread
 from dronehandler import DroneHandler
+from geofencemanager import GeofenceManager
 import json
+import numpy as np
 
 
 class ZMQManager:
@@ -10,6 +12,7 @@ class ZMQManager:
         self.running = True
 
         self.drone = DroneHandler()
+        self.geofencemanager = GeofenceManager()
 
         self.zmq_thread = Thread(target=self._zmqManager)
         self.zmq_thread.run()
@@ -49,17 +52,17 @@ class ZMQManager:
                 else:
                     socket.send_string('Failed to disconnect was a drone connected?')
             elif message[:9] == "Geofence:":
+                self.geofencemanager.update_geo_nav_data(message[10:])
                 socket.send_string("Geofence Saved!")
-                print(message[10:])
-                res = json.loads(message[10:])
-                with open('../DroneControl/data/geofence.json', 'w') as f:
-                    json.dump(res, f)
             elif message == "GetGeofence":
                 try:
                     with open('../DroneControl/data/geofence.json', 'r') as f:
                         socket.send_string(f.read())
                 except:
                     socket.send_string('[]')
+            elif message[:9] == "MakePath:":
+                markers = json.loads(message[10:])
+                socket.send_string(str(self.geofencemanager.get_path(markers[0], markers[1])))
             else:
                 socket.send_string('Unknown Message!')
 

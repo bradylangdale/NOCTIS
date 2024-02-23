@@ -9,7 +9,11 @@
 <h1>Geofence Editor</h1>
 
 <p>Draw the drones geofence below.</p>
-<p><button @onclick="SaveGeofence">Save Map</button><label> @response</label></p>
+<p>
+<button @onclick="SaveGeofence">Save Map</button><label> @response</label>
+<button @onclick="GeneratePath">Generate Path</button>
+<button @onclick="ClearMarkers">Clear Markers</button>
+</p>
 <div id="map" style="height:640px;width:100%;"></div>
 
 @code{
@@ -21,6 +25,24 @@
         drone.SendCommand("Geofence: " + data);
 
         while (!drone.CheckResponses(ref response));
+
+        StateHasChanged();
+    }
+
+    public async void ClearMarkers()
+    {
+        await JSRuntime.InvokeVoidAsync("geofenceEditor.clearMarkers", null);
+    }
+
+    public async void GeneratePath()
+    {
+        var data = await JSRuntime.InvokeAsync<Object>("geofenceEditor.getMarkers", null);
+        drone.SendCommand("MakePath: " + data);
+
+        string path = "";
+        while (!drone.CheckResponses(ref path));
+
+        await JSRuntime.InvokeVoidAsync("geofenceEditor.setMarkers", path);
     }
     
     protected override async Task OnAfterRenderAsync(bool firstRender)

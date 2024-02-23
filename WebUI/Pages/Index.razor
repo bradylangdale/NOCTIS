@@ -32,6 +32,8 @@
         drone.SendCommand("TestFlight");
 
         while (!drone.CheckResponses(ref response));
+
+        StateHasChanged();
     }
 
     private void OnTimerCallback()

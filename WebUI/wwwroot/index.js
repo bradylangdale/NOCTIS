@@ -1,9 +1,11 @@
 var polygons = [];
 var geofence = [];
+var markers = [];
+var map = null;
 
 // TODO: replace the hard coded lat and long with something more customizable
 function initGeofenceEditor() {
-    const map = new google.maps.Map(document.getElementById("map"), {
+    map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: 30.70439747044987, lng: -96.32200039372728 },
         zoom: 17,
         mapTypeId: "satellite",
@@ -15,11 +17,9 @@ function initGeofenceEditor() {
         drawingControlOptions: {
             position: google.maps.ControlPosition.TOP_CENTER,
                 drawingModes: [
+                    google.maps.drawing.OverlayType.MARKER,
                     google.maps.drawing.OverlayType.POLYGON,
                 ],
-        },
-        markerOptions: {
-            icon: "icons/anafi-usa.png",
         },
         polygonOptions: {
             fillColor: "#bababa",
@@ -211,6 +211,10 @@ function initGeofenceEditor() {
 
     const deleteMenu = new DeleteMenu();
 
+    google.maps.event.addListener(drawingManager, 'markercomplete', function(marker) {
+        markers.push(marker);
+    });
+
     google.maps.event.addListener(drawingManager, 'polygoncomplete', function(polygon) {
         polygons.push(polygon);
         geofence.push({type: 'n/a', shape: polygon});
@@ -326,7 +330,52 @@ window.geofenceEditor = {
                 poly
             );
 
-            geofence.push({type: obj[i].type, shape: poly});
+            geofence.push({ type: obj[i].type, shape: poly });
         }
+    },
+
+    getMarkers: function()
+    {
+        var data = [];
+        for (let i = 0; i < markers.length; i++)
+        {
+            var pos = markers[i].getPosition();
+
+            data.push([ pos.lat(), pos.lng() ]);
+        }
+
+        return data;
+    },
+
+    setMarkers: function(data)
+    {
+        for (let i = 0; i < markers.length; i++)
+        {
+            markers[i].setMap(null);
+        }
+
+        markers = [];
+        const obj = JSON.parse(data);
+
+        for (let i = 0; i < obj.length; i++)
+        {
+            var marker = new google.maps.Marker({
+                position: { lat: obj[i][0], lng: obj[i][1] },
+            });
+
+            marker.setMap(map);
+
+            markers.push(marker);
+        }
+    },
+
+    clearMarkers: function()
+    {
+        for (let i = 0; i < markers.length; i++)
+        {
+            markers[i].setMap(null);
+        }
+
+        markers = [];
     },
 };
