@@ -133,6 +133,20 @@ class GeofenceManager:
             
             self.apply_shape_to_mesh(Polygon(shape['data']), -10)
 
+    def line_of_sight(self, start, end):
+        length = int(math.sqrt(math.pow(end[0] - start[0], 2) + math.pow(end[1] - start[1], 2)))
+
+        for i in range(length - 1):
+            t = i / length
+
+            x = int(t * (end[0] - start[0]) + start[0])
+            y = int(t * (end[1] - start[1]) + start[1])
+
+            if self.navmesh[x][y] == -10:
+                return False
+            
+        return True
+
 
     def get_path(self, start, end):
         start_index = self.latlng_to_index(start)
@@ -145,11 +159,37 @@ class GeofenceManager:
 
             if not path:
                 return []
+            else:
+                path.reverse()
+        
+        new_path = []
+        new_path.append(start_index)
+        i = 0
+        # line of site optimization
+        while i < len(path) - 1:
+            j = 1
+
+            collision = False
+            while (i + j) < len(path):
+                if self.line_of_sight(path[i], path[i + j]):
+                    j += 1
+                elif j > 1:
+                    collision = True
+                    new_path.append(path[i + j - 1])
+                    i += j - 1
+                    break
+                else:
+                    collision = True
+                    new_path.append(path[i + 1])
+                    i += 1
+                    break
+
+            if not collision:
+                new_path.append(path[-1])
+                break
 
         coords = []
-        coords.append(start);
-        for p in path:
+        for p in new_path:
             coords.append(self.index_to_latlng(p))
-        coords.append(end);
 
         return coords
