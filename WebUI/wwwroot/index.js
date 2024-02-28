@@ -1,6 +1,7 @@
 var polygons = [];
 var geofence = [];
 var markers = [];
+var lines = [];
 var map = null;
 
 // TODO: replace the hard coded lat and long with something more customizable
@@ -355,18 +356,34 @@ window.geofenceEditor = {
         }
 
         markers = [];
+        var coords = [];
+
         const obj = JSON.parse(data);
 
         for (let i = 0; i < obj.length; i++)
-        {
+        {   var coord = { lat: obj[i][0], lng: obj[i][1] };
+
             var marker = new google.maps.Marker({
-                position: { lat: obj[i][0], lng: obj[i][1] },
+                position: coord,
             });
 
             marker.setMap(map);
-
+            
+            coords.push(coord);
             markers.push(marker);
         }
+
+        var line = new google.maps.Polyline({
+            path: coords,
+            geodesic: true,
+            strokeColor: '#000000',
+            strokeOpacity: 1.0,
+            strokeWeight: 2
+        });
+        
+        line.setMap(map);
+
+        lines.push(line);
     },
 
     clearMarkers: function()
@@ -376,6 +393,12 @@ window.geofenceEditor = {
             markers[i].setMap(null);
         }
 
+        for (let i = 0; i < lines.length; i++)
+        {
+            lines[i].setMap(null);
+        }
+
+        lines = [];
         markers = [];
     },
 };

@@ -212,5 +212,3 @@ class DroneHandler(olympe.EventListener):
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
 
         self.state = DroneState.Idling
-
-
