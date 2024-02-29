@@ -15,6 +15,7 @@ class GeofenceManager:
         self.mesh_size = None
         self.angular_res = 111139
         self.pathfinder = None
+        self.kia = []
 
         try:
             with open('../DroneControl/data/geofence.json', 'r') as f:
@@ -106,11 +107,19 @@ class GeofenceManager:
             delta[1] * (index[1] / (self.mesh_size[1] - 1)) + self.y_bounds[0]
         ]
     
-    def apply_shape_to_mesh(self, shape, fill):
-        for x in range(self.mesh_size[0]):
-            for y in range(self.mesh_size[1]):
-                if shape.contains(Point(self.index_to_latlng([x, y]))):
-                    self.navmesh[x][y] = fill
+    def apply_shape_to_mesh(self, shape, fill, is_kia=False, kia_only=False):
+        if not kia_only:
+            for x in range(self.mesh_size[0]):
+                for y in range(self.mesh_size[1]):
+                    if shape.contains(Point(self.index_to_latlng([x, y]))):
+                        self.navmesh[x][y] = fill
+
+                        if is_kia:
+                            self.kia.append([x, y])
+        else:
+            for p in self.kia:
+                if shape.contains(Point(self.index_to_latlng([p[0], p[1]]))):
+                        self.navmesh[p[0]][p[1]] = fill
 
     def generate_navmesh(self):
         self.navmesh = [[-10 for y in range(self.mesh_size[1])] for x in range(self.mesh_size[0])]
@@ -119,19 +128,20 @@ class GeofenceManager:
             if shape['type'] != 'KIA':
                 continue
             
-            self.apply_shape_to_mesh(Polygon(shape['data']), -1)
+            self.kia = []
+            self.apply_shape_to_mesh(Polygon(shape['data']), -1, is_kia=True)
 
         for shape in self.geofence:
             if shape['type'] != 'EA':
                 continue
             
-            self.apply_shape_to_mesh(Polygon(shape['data']), -1)
+            self.apply_shape_to_mesh(Polygon(shape['data']), -1, kia_only=True)
                                      
         for shape in self.geofence:
             if shape['type'] != 'KOA':
                 continue
             
-            self.apply_shape_to_mesh(Polygon(shape['data']), -10)
+            self.apply_shape_to_mesh(Polygon(shape['data']), -10, kia_only=True)
 
     def move_from_edge(self, point, radius=3):
         green_count = 0
@@ -284,7 +294,7 @@ class GeofenceManager:
         path = self.move_by_radius(path, radius=4)
         path = self.remove_by_los(path, start_index)
         
-        # do three check for good measure
+        # do three checks for good measure
         path = self.ensure_radius(path, radius=3)
         path = self.ensure_radius(path, radius=3)
         path = self.ensure_radius(path, radius=3)
@@ -294,3 +304,6 @@ class GeofenceManager:
             coords.append(self.index_to_latlng(p))
 
         return coords
+    
+    def get_survey_path(self, start):
+        
