@@ -63,7 +63,7 @@ class ZMQManager:
             elif message[:9] == "MakePath:":
                 markers = json.loads(message[10:])
                 if len(markers) == 2:
-                    socket.send_string(str(self.geofencemanager.get_path(markers[0], markers[1])))
+                    socket.send_string(str(self.geofencemanager.get_survey_path(markers[0])))
                 else:
                     socket.send_string('[]')
             else:

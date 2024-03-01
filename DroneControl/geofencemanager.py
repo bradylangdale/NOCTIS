@@ -4,7 +4,10 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 import numpy as np
 from pathfinder import Pathfinder
+import copy
 
+GREEN = -1
+RED = -10
 
 # TODO: remove hardcoded paths only here for debugging purposes
 class GeofenceManager:
@@ -24,20 +27,24 @@ class GeofenceManager:
             print('Successfully loaded geofence.json')
 
             try:
-                self.navmesh = list(np.loadtxt('../DroneControl/data/navmesh.data'))
+                self.navmesh = np.loadtxt('../DroneControl/data/navmesh.data').tolist()
                 print('Successfully loaded navmesh.data')
+
+                self.kia = np.loadtxt('../DroneControl/data/kia.data').tolist()
+                print('Successfully loaded kia.data')
 
                 self.find_bounds()
 
                 self.pathfinder = Pathfinder(self.navmesh)
                 print('Successfully initialized the pathfinder.')
             except:
-                print('No navmesh found but geofence.json is loaded, generating navmesh.data.')
+                print('No navmesh or kia found but geofence.json is loaded, generating *.data files.')
 
                 self.find_bounds()
                 self.generate_navmesh()
 
-                np.savetxt('../DroneControl/data/navmesh.data', self.navmesh)
+                np.savetxt('../DroneControl/data/navmesh.data', self.navmesh, fmt='%i')
+                np.savetxt('../DroneControl/data/kia.data', self.kia, fmt='%i')
 
                 print('Navmesh generating and written.')
                 
@@ -57,7 +64,8 @@ class GeofenceManager:
         self.find_bounds()
         self.generate_navmesh()
 
-        np.savetxt('../DroneControl/data/navmesh.data', self.navmesh)
+        np.savetxt('../DroneControl/data/navmesh.data', self.navmesh, fmt='%i')
+        np.savetxt('../DroneControl/data/kia.data', self.kia, fmt='%i')
 
         print('Navmesh generating and rewritten.')
         
@@ -117,33 +125,50 @@ class GeofenceManager:
                         if is_kia:
                             self.kia.append([x, y])
         else:
+            new_kia = []
+
             for p in self.kia:
                 if shape.contains(Point(self.index_to_latlng([p[0], p[1]]))):
                         self.navmesh[p[0]][p[1]] = fill
+                else:
+                    new_kia.append(p)
 
+            self.kia = new_kia
+
+    # TODO: optimize this using a fill algorithm.
+    # 1) check what grid square lie on a polygon edge
+    # 2) fill the interior of the polygons grid squares using this information, we don't need to do
+    # shape.contains() on every point if we know the bounds on the shape
     def generate_navmesh(self):
-        self.navmesh = [[-10 for y in range(self.mesh_size[1])] for x in range(self.mesh_size[0])]
+        self.navmesh = [[RED for y in range(self.mesh_size[1])] for x in range(self.mesh_size[0])]
 
         for shape in self.geofence:
             if shape['type'] != 'KIA':
                 continue
             
             self.kia = []
-            self.apply_shape_to_mesh(Polygon(shape['data']), -1, is_kia=True)
+            self.apply_shape_to_mesh(Polygon(shape['data']), GREEN, is_kia=True)
 
         for shape in self.geofence:
             if shape['type'] != 'EA':
                 continue
             
-            self.apply_shape_to_mesh(Polygon(shape['data']), -1, kia_only=True)
+            self.apply_shape_to_mesh(Polygon(shape['data']), GREEN, kia_only=True)
                                      
         for shape in self.geofence:
             if shape['type'] != 'KOA':
                 continue
             
-            self.apply_shape_to_mesh(Polygon(shape['data']), -10, kia_only=True)
+            self.apply_shape_to_mesh(Polygon(shape['data']), RED, kia_only=True)
 
-    def move_from_edge(self, point, radius=3):
+    def clamp_to_bounds(self, point):
+        return [int(max(0, min(point[0], self.mesh_size[0] - 1))),
+                int(max(0, min(point[1], self.mesh_size[1] - 1)))]
+
+    def move_from_edge(self, point, radius=3, mesh=None):
+        if mesh is None:
+            mesh = self.navmesh
+
         green_count = 0
         gx = 0
         gy = 0
@@ -156,16 +181,18 @@ class GeofenceManager:
                 px = (x + point[0]) - radius
                 py =(y + point[1]) - radius
 
-                if self.navmesh[px][py] == -10:
+                px, py = self.clamp_to_bounds([px, py])
+
+                if mesh[px][py] == RED:
                     rx += px
                     ry += py
                     red_count += 1
-                elif self.navmesh[px][py] == -1:
+                elif mesh[px][py] == GREEN:
                     gx += px
                     gy += py
                     green_count += 1
 
-        if red_count > 1:
+        if red_count > 1 and green_count > 1:
             rx /= red_count
             ry /= red_count
 
@@ -174,10 +201,13 @@ class GeofenceManager:
 
             length = math.sqrt(math.pow(gx - rx, 2) + math.pow(gy - ry, 2))
 
-            vx = (radius * ((gx - rx) / length)) + gx
-            vy = (radius * ((gy - ry) / length)) + gy
+            if length == 0:
+                return point
 
-            return [vx, vy]
+            vx = int((radius * ((gx - rx) / length)) + gx)
+            vy = int((radius * ((gy - ry) / length)) + gy)
+
+            return self.clamp_to_bounds([vx, vy])
         else:
             return point
 
@@ -197,8 +227,8 @@ class GeofenceManager:
     def line_of_sight(self, start, end):
         length = int(math.sqrt(math.pow(end[0] - start[0], 2) + math.pow(end[1] - start[1], 2)))
 
-        if length < 10:
-            length = 10
+        if length < 25:
+            length = 25
 
         for i in range(length - 1):
             t = i / length
@@ -206,7 +236,7 @@ class GeofenceManager:
             x = int(t * (end[0] - start[0]) + start[0])
             y = int(t * (end[1] - start[1]) + start[1])
 
-            if self.navmesh[x][y] == -10:
+            if self.navmesh[x][y] == RED:
                 return False
             
         return True
@@ -305,5 +335,62 @@ class GeofenceManager:
 
         return coords
     
+    def distance(self, p1, p2):
+        return math.sqrt(math.pow(p1[0] - p2[0], 2) + math.pow(p1[1] - p2[1], 2))
+    
+    def set_red(self, point, mesh, radius=3):
+        for x in range(radius * 2):
+            for y in range(radius * 2):
+                px = (x + point[0]) - radius
+                py = (y + point[1]) - radius
+
+                px, py = self.clamp_to_bounds([px, py])
+
+                mesh[px][py] = RED
+
+    def check_direction(self, point, direction, radius=3):
+        test_point = [point[0] + direction[0], point[1] + direction[1]]
+    
     def get_survey_path(self, start):
+        survey_mesh = copy.deepcopy(self.navmesh)
+        pois = []
+        pois.append(self.latlng_to_index(start))
+
+        for p in self.kia:
+            if self.distance(pois[-1], p) > 30 and survey_mesh[int(p[0])][int(p[1])] == GREEN:
+                self.set_red(p, survey_mesh, radius=30)
+                pois.append(p)
+
+        pois = self.move_by_radius(pois, radius=10)
+
+        ordered_pois = []
+        ordered_pois.append(pois[0])
         
+        i = 0
+        while len(ordered_pois) != len(pois):
+            closest_dist = 1000000
+            j = 0
+            new_i = -1
+            while j < len(pois):
+                if i != j:
+                    dist = self.distance(pois[i], pois[j])
+
+                    if dist < closest_dist \
+                        and self.line_of_sight(pois[i], pois[j]) \
+                        and pois[j] not in ordered_pois:
+
+                        closest_dist = dist
+                        new_i = j
+                j += 1
+
+            if new_i != -1:
+                ordered_pois.append(pois[new_i])
+                i = new_i
+            else:
+                break
+
+        coords = []
+        for p in ordered_pois:
+            coords.append(self.index_to_latlng(p))
+
+        return coords
