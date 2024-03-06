@@ -10,14 +10,16 @@ from enum import Enum
 
 import olympe
 from olympe.messages.ardrone3.Piloting import TakeOff, Landing
-from olympe.messages.ardrone3.Piloting import moveBy
-from olympe.messages.ardrone3.PilotingState import FlyingStateChanged, AltitudeAboveGroundChanged
+from olympe.messages.ardrone3.Piloting import moveBy, moveTo
+from olympe.messages.ardrone3.PilotingState import FlyingStateChanged, AltitudeAboveGroundChanged, PositionChanged, moveToChanged
 from olympe.messages.ardrone3.PilotingSettings import MaxTilt
 from olympe.messages.ardrone3.PilotingSettingsState import MaxTiltChanged
 from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChanged
 from olympe.messages.common.CommonState import BatteryStateChanged, SensorsStatesListChanged
 from olympe.messages.camera import camera_states
+
 from olympe.enums.common.CommonState import SensorsStatesListChanged_SensorName as Sensor
+from olympe.enums.ardrone3.Piloting import MoveTo_Orientation_mode
 
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
@@ -52,7 +54,12 @@ class DroneHandler(olympe.EventListener):
         self.running = False
         self.current_frame = None
         self.survey_complete = True
+        self.geofencemanager = None
         self.state = DroneState.Idling
+
+        self.start_lat = 0.0
+        self.start_lng = 0.0
+        self.start_alt = 0.0
 
     def start(self):
         # Connect to drone
@@ -75,7 +82,9 @@ class DroneHandler(olympe.EventListener):
             return True
 
         return False
-
+    
+    def set_geo(self, geo):
+        self.geofencemanager = geo
 
     def frame_processing(self):
 
@@ -118,7 +127,7 @@ class DroneHandler(olympe.EventListener):
     #def onAltitudeAboveGroundChanged(self, event, scheduler):
     #    # TODO: adjust next target to ensure that the drone isn't too close to the ground
     #    pass
-
+        
     def fly(self):
         self.survey_complete = False
         self.state = DroneState.TakingOff
@@ -146,11 +155,13 @@ class DroneHandler(olympe.EventListener):
         battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
         if battery_level < 90:
             self.state = DroneState.Charging
+            print('Drone needs to charge.')
             return
 
         # check cameras running
         if self.drone.get_state(camera_states)["active_cameras"] == 0:
             self.state = DroneState.Idling
+            print('Drone cameras are not functional.')
             return
 
         # check drone sensors
@@ -158,28 +169,36 @@ class DroneHandler(olympe.EventListener):
 
         if sensors[Sensor.IMU]['sensorState'] == 0:
             self.state = DroneState.Idling
+            print('Drone IMU is not functional.')
             return
 
         if sensors[Sensor.magnetometer]['sensorState'] == 0:
             self.state = DroneState.Idling
+            print('Drone magnetometer is not functional.')
             return
         
         if sensors[Sensor.barometer]['sensorState'] == 0:
             self.state = DroneState.Idling
+            print('Drone barometer is not functional.')
             return
         
         if sensors[Sensor.GPS]['sensorState'] == 0:
             self.state = DroneState.Idling
+            print('Drone GPS is not functional.')
             return
         
         if sensors[Sensor.ultrasound]['sensorState'] == 0:
             self.state = DroneState.Idling
+            print('Drone ultrasound is not functional.')
             return
         
         if sensors[Sensor.vertical_camera]['sensorState'] == 0:
             self.state = DroneState.Idling
+            print('Drone vertical camera is not functional.')
             return
-        
+
+        print('Drone is taking off.')
+
         self.drone(
             FlyingStateChanged(state="hovering", _policy="check")
             | FlyingStateChanged(state="flying", _policy="check")
@@ -194,6 +213,15 @@ class DroneHandler(olympe.EventListener):
             )
         ).wait()
 
+        position = self.drone.get_state(PositionChanged)
+        self.start_lat = position['latitude']
+        self.start_lng = position['longitude']
+        self.start_alt = position['altitude']
+
+        self.drone(moveTo(self.start_lat, self.start_lng, 10, MoveTo_Orientation_mode.TO_TARGET, 0, _timeout=1000)).wait().success()
+
+        print('Drone take off is successful going to survey.')
+
         # TODO: determine if we need to land or go into idle
         self.state = DroneState.Surveying
 
@@ -201,14 +229,37 @@ class DroneHandler(olympe.EventListener):
         maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
         self.drone(MaxTilt(maxtilt)).wait()
 
-        self.drone(moveBy(-100, 0, -25, 0, _timeout=20)).wait().success()
+        print('Drone is generating a surveillance path.')
+        survey_path = self.geofencemanager.get_survey_path([self.start_lat, self.start_lng])
+        print('Drone has a survey path.')
 
-        for i in range(4):
-            self.drone(moveBy(50, 0, 0, math.pi, _timeout=20)).wait().success()
+        for p in survey_path:
+            self.drone(
+                moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
+                >> moveToChanged(status='DONE', _timeout=120)
+                ).wait().success()
+
+        print('Drone has completed surveillance, no targets found.')
+
+        position = self.drone.get_state(PositionChanged)
+
+        print('Drone has generated a return home path.')
+        return_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
+                                                    [self.start_lat, self.start_lng])
+        
+        for p in return_path:
+            self.drone(
+                moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
+                >> moveToChanged(status='DONE', _timeout=120)
+                ).wait().success()
+
+        print('Drone has made it home. Landing!')
 
         self.state = DroneState.Landing
 
     def landing(self):
-        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=5)).wait()
+        self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=120)).wait().success()
+
+        print('Drone has successfully landed.')
 
         self.state = DroneState.Idling

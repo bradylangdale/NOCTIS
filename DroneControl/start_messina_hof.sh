@@ -1,1 +1,1 @@
-sphinx "/opt/parrot-sphinx/usr/share/sphinx/drones/anafi.drone"::firmware="https://firmware.parrot.com/Versions/anafi/pc/%23latest/images/anafi-pc.ext2.zip" & parrot-ue4-planet -config-file=planet.yaml -gps-json='{"lat_deg":30.70301246725618, "lng_deg":-96.32226936465015}'
+sphinx "/opt/parrot-sphinx/usr/share/sphinx/drones/anafi.drone"::firmware="https://firmware.parrot.com/Versions/anafi/pc/%23latest/images/anafi-pc.ext2.zip" & parrot-ue4-planet -config-file=planet.yaml -gps-json='{"lat_deg":30.70296676252938, "lng_deg":-96.32263917478086}'

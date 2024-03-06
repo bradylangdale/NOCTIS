@@ -11,7 +11,10 @@
 <h1>Live Feed</h1>
 
 <p><img src="@imagePath" style="max-width: 100%;" id="frame"/></p>
-<p><button @onclick="TestFlight">Fly a loop!</button></p>
+<p><button @onclick="Connect">Connect</button></p>
+<p><button @onclick="Disconnect">Disconnect</button></p>
+<p><button @onclick="Survey">Survey</button></p>
+<p><button @onclick="Restart">Restart</button></p>
 <p><label>@response</label></p>
 
 @code {
@@ -27,13 +30,38 @@
         timer.Start(); 
     }
 
-    public void TestFlight()
+    public void Connect()
     {
-        drone.SendCommand("TestFlight");
+        drone.SendCommand("ConnectDrone");
+
+        while (!drone.CheckResponses(ref response));
+
+        drone.StreamState(true);
+        StateHasChanged();
+    }
+
+    public void Disconnect()
+    {
+        drone.SendCommand("DisconnectDrone");
+        drone.StreamState(false);
 
         while (!drone.CheckResponses(ref response));
 
         StateHasChanged();
+    }
+
+    public void Survey()
+    {
+        drone.SendCommand("Survey");
+
+        while (!drone.CheckResponses(ref response));
+
+        StateHasChanged();
+    }
+
+    public void Restart()
+    {
+        drone.RestartDroneService();
     }
 
     private void OnTimerCallback()

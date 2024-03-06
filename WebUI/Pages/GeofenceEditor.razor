@@ -12,6 +12,7 @@
 <p>
 <button @onclick="SaveGeofence">Save Map</button><label> @response</label>
 <button @onclick="GeneratePath">Generate Path</button>
+<button @onclick="GenerateSurvey">Generate Survey</button>
 <button @onclick="ClearMarkers">Clear Markers</button>
 </p>
 <div id="map" style="height:640px;width:100%;"></div>
@@ -38,6 +39,17 @@
     {
         var data = await JSRuntime.InvokeAsync<Object>("geofenceEditor.getMarkers", null);
         drone.SendCommand("MakePath: " + data);
+
+        string path = "";
+        while (!drone.CheckResponses(ref path));
+
+        await JSRuntime.InvokeVoidAsync("geofenceEditor.setMarkers", path);
+    }
+
+    public async void GenerateSurvey()
+    {
+        var data = await JSRuntime.InvokeAsync<Object>("geofenceEditor.getMarkers", null);
+        drone.SendCommand("MakeSurvey: " + data);
 
         string path = "";
         while (!drone.CheckResponses(ref path));

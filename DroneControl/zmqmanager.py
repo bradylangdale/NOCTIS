@@ -14,6 +14,8 @@ class ZMQManager:
         self.drone = DroneHandler()
         self.geofencemanager = GeofenceManager()
 
+        self.drone.set_geo(self.geofencemanager)
+
         self.zmq_thread = Thread(target=self._zmqManager)
         self.zmq_thread.run()
 
@@ -26,14 +28,12 @@ class ZMQManager:
         while(self.running):
             message = socket.recv().decode("utf-8")
 
-            if message == 'TestFlight':
+            if message == 'Survey':
                 if self.drone.stop():
-                    if self.drone.start():
-                        t = Thread(target=self.drone.fly)
-                        t.start()
-                        socket.send_string('Starting Test Flight.')
-                    else:
-                        socket.send_string('Failed to connect to the drone.')
+                    self.drone.start()
+                    t = Thread(target=self.drone.fly)
+                    t.start()
+                    socket.send_string('Starting Automated Survey.')
                 else:
                     socket.send_string('Failed to disconnect was a drone connected?')
             elif message == 'GetCurrentFrame':
@@ -62,6 +62,12 @@ class ZMQManager:
                     socket.send_string('[]')
             elif message[:9] == "MakePath:":
                 markers = json.loads(message[10:])
+                if len(markers) == 2:
+                    socket.send_string(str(self.geofencemanager.get_path(markers[0], markers[1])))
+                else:
+                    socket.send_string('[]')
+            elif message[:11] == "MakeSurvey:":
+                markers = json.loads(message[12:])
                 if len(markers) == 2:
                     socket.send_string(str(self.geofencemanager.get_survey_path(markers[0])))
                 else:

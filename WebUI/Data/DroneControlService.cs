@@ -35,6 +35,11 @@ namespace WebUI.Data
             }
         }
 
+        public void StreamState(bool state)
+        {
+            droneConnected = state;
+        }
+
         public string GetCurrentFrame()
         {
             lock (imagePath)
