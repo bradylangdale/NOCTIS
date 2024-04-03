@@ -9,9 +9,15 @@ import numpy as np
 from enum import Enum
 
 import olympe
+import olympe_deps as od
+from olympe.messages.skyctrl.CoPiloting import setPilotingSource
 from olympe.messages.ardrone3.Piloting import TakeOff, Landing
 from olympe.messages.ardrone3.Piloting import moveBy, moveTo
-from olympe.messages.ardrone3.PilotingState import FlyingStateChanged, AltitudeAboveGroundChanged, PositionChanged, moveToChanged
+from olympe.messages.ardrone3.PilotingState import (FlyingStateChanged, 
+                                                    AltitudeAboveGroundChanged, 
+                                                    PositionChanged, 
+                                                    SpeedChanged,
+                                                    moveToChanged)
 from olympe.messages.ardrone3.PilotingSettings import MaxTilt
 from olympe.messages.ardrone3.PilotingSettingsState import MaxTiltChanged
 from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChanged
@@ -24,7 +30,13 @@ from olympe.enums.ardrone3.Piloting import MoveTo_Orientation_mode
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
-DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
+SIM = False
+
+if SIM:
+    DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
+else:
+    DRONE_IP = os.environ.get("DRONE_IP", "192.168.53.1")
+
 DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT")
 
 
@@ -45,7 +57,10 @@ class DroneHandler(olympe.EventListener):
         super().__init__()
 
         # Create the olympe.Drone object from its IP address
-        self.drone = olympe.Drone(DRONE_IP)
+        if SIM:
+            self.drone = olympe.Drone(DRONE_IP)
+        else:
+            self.drone = olympe.Drone(DRONE_IP, drone_type=od.ARSDK_DEVICE_TYPE_ANAFI_THERMAL)
         
         subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/'.split(' '))
         subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/Videos/'.split(' '))
@@ -61,13 +76,20 @@ class DroneHandler(olympe.EventListener):
         self.start_lng = 0.0
         self.start_alt = 0.0
 
+        self.path_complete = False
+        self.waypoints = []
+        self.current_i = 0
+
     def start(self):
         # Connect to drone
         if self.drone.connect(retry=3):
+            self.drone(setPilotingSource(source="Controller")).wait()
             self.running = True
 
             self.video_thread = Thread(target=self.frame_processing)
             self.video_thread.start()
+
+            return True
 
         return False
 
@@ -91,11 +113,11 @@ class DroneHandler(olympe.EventListener):
         # TODO: check if I can just output jpeg instead raw
         command = [
             'ffmpeg',
-            '-probesize', '32',
-            '-analyzeduration', '0',
-            '-loglevel', 'quiet',
+            '-probesize', '128',
+            '-analyzeduration', '1000',
             '-i', f'rtsp://{DRONE_IP}/live',
             '-f', 'rawvideo',
+            '-vsync', '2',
             '-pix_fmt', 'bgr24',
             'pipe:'
         ]
@@ -116,10 +138,11 @@ class DroneHandler(olympe.EventListener):
                 self.current_frame = cv2.imencode(".jpg", frame)[1].tobytes()
                 
             except Exception as e:
-                p.kill()
-                time.sleep(500)
-                p = subprocess.Popen(command, stdout=subprocess.PIPE)
-                print(e)
+                #p.kill()
+                #time.sleep(500)
+                #p = subprocess.Popen(command, stdout=subprocess.PIPE)
+                #print(e)
+                pass
 
         p.kill()
 
@@ -149,6 +172,9 @@ class DroneHandler(olympe.EventListener):
                 self.repositioning()
             elif self.state == DroneState.Charging:
                 self.charging()
+
+    def charging(self):
+        self.state = DroneState.Idling
 
     def takingoff(self):
         # check battery level
@@ -233,24 +259,33 @@ class DroneHandler(olympe.EventListener):
         survey_path = self.geofencemanager.get_survey_path([self.start_lat, self.start_lng])
         print('Drone has a survey path.')
 
+        #self.waypoints = survey_path
+
+        #self.path_complete = False
+        #while not self.path_complete:
+        #    time.sleep(1)
+        
         for p in survey_path:
             self.drone(
                 moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
-                >> moveToChanged(status='DONE', _timeout=120)
+                >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
 
         print('Drone has completed surveillance, no targets found.')
 
-        position = self.drone.get_state(PositionChanged)
+        self.state = DroneState.Returning
 
-        print('Drone has generated a return home path.')
+    def returning(self):
+        position = self.drone.get_state(PositionChanged)
         return_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
                                                     [self.start_lat, self.start_lng])
+        
+        print('Drone has generated a return home path.')
         
         for p in return_path:
             self.drone(
                 moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
-                >> moveToChanged(status='DONE', _timeout=120)
+                >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
 
         print('Drone has made it home. Landing!')
