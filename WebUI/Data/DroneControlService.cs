@@ -159,7 +159,7 @@ namespace WebUI.Data
                             }
                         }
 
-                        Thread.Sleep(30);
+                        Thread.Sleep(64);
                     }
                 }
 

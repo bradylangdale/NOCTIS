@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 from enum import Enum
 
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+
 import olympe
 import olympe_deps as od
 from olympe.messages.skyctrl.CoPiloting import setPilotingSource
@@ -67,7 +69,7 @@ class DroneHandler(olympe.EventListener):
 
         self.video_thread = None
         self.running = False
-        self.current_frame = None
+        self.frames = []
         self.survey_complete = True
         self.geofencemanager = None
         self.state = DroneState.Idling
@@ -110,33 +112,53 @@ class DroneHandler(olympe.EventListener):
 
     def frame_processing(self):
 
-        # TODO: check if I can just output jpeg instead raw
-        command = [
-            'ffmpeg',
-            '-probesize', '128',
-            '-analyzeduration', '1000',
-            '-i', f'rtsp://{DRONE_IP}/live',
-            '-f', 'rawvideo',
-            '-vsync', '2',
-            '-pix_fmt', 'bgr24',
-            'pipe:'
-        ]
+        # # TODO: check if I can just output jpeg instead raw
+        # command = [
+        #     'ffmpeg',
+        #     '-probesize', '128',
+        #     '-analyzeduration', '1000',
+        #     '-r', '30',
+        #     '-c:v', 'h264',
+        #     '-rtbufsize', '1G',
+        #     '-i', f'rtsp://{DRONE_IP}/live',
+        #     '-preset:v', 'ultrafast',
+        #     '-q:v', '1',
+        #     '-b:v', '500K',
+        #     '-maxrate', '500K',
+        #     '-bufsize', '250K',
+        #     '-crf', '50',
+        #     '-s', '1280x720',
+        #     '-f', 'rawvideo',
+        #     '-pix_fmt', 'bgr24',
+        #     'pipe:'
+        # ]
 
-        # TODO: fix this so when the application is closed stdout is reclaimed
-        p = subprocess.Popen(command, stdout=subprocess.PIPE)
+        # # TODO: fix this so when the application is closed stdout is reclaimed
+        # p = subprocess.Popen(command, stdout=subprocess.PIPE)
 
-        width = 1280
-        height = 720
+        WEBCAM_RAW_RES = (1280, 720)
+        FRAMERATE = 24
+        vcap = cv2.VideoCapture("rtsp://192.168.53.1:554/live")
+        vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
+        vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
+        vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
+        vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
         while self.running:
 
             try:
-                raw_frame = p.stdout.read(width*height*3)
-                frame = np.frombuffer(raw_frame, np.uint8)
-                frame = frame.reshape((height, width, 3))
+                #raw_frame = p.stdout.read(width*height*3)
+                #frame = np.frombuffer(raw_frame, np.uint8)
+                #frame = frame.reshape((height, width, 3))
 
-                self.current_frame = cv2.imencode(".jpg", frame)[1].tobytes()
-                
+                ret, frame = vcap.read()
+                if ret == False:
+                    pass
+                else:
+                    if len(self.frames) > 4:
+                        self.frames.pop(0)
+                    self.frames.append(frame)
+            
             except Exception as e:
                 #p.kill()
                 #time.sleep(500)
@@ -144,7 +166,7 @@ class DroneHandler(olympe.EventListener):
                 #print(e)
                 pass
 
-        p.kill()
+        #p.kill()
 
     #@olympe.listen_event(AltitudeAboveGroundChanged(_policy='wait'))
     #def onAltitudeAboveGroundChanged(self, event, scheduler):

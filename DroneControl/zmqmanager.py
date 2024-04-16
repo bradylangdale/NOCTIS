@@ -4,6 +4,9 @@ from dronehandler import DroneHandler
 from geofencemanager import GeofenceManager
 import json
 import numpy as np
+import cv2
+
+JPG_QUALITY = [int(cv2.IMWRITE_JPEG_QUALITY), 20]
 
 
 class ZMQManager:
@@ -37,8 +40,8 @@ class ZMQManager:
                 else:
                     socket.send_string('Failed to disconnect was a drone connected?')
             elif message == 'GetCurrentFrame':
-                if self.drone.current_frame != None:
-                    socket.send_string(self.drone.current_frame.decode('iso-8859-1'))
+                if len(self.drone.frames) > 0:
+                    socket.send_string(cv2.imencode(".jpg", self.drone.frames.pop(0), JPG_QUALITY)[1].tobytes().decode('iso-8859-1'))
                 else:
                     socket.send_string('Not Ready')
             elif message == 'ConnectDrone':
