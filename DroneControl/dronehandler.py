@@ -55,7 +55,7 @@ class DroneState(Enum):
 
 class DroneHandler(olympe.EventListener):
 
-    def __init__(self):
+    def __init__(self, zmqmanager):
         super().__init__()
 
         # Create the olympe.Drone object from its IP address
@@ -72,6 +72,7 @@ class DroneHandler(olympe.EventListener):
         self.frames = []
         self.survey_complete = True
         self.geofencemanager = None
+        self.zmqmanager = zmqmanager
         self.state = DroneState.Idling
 
         self.start_lat = 0.0
@@ -112,30 +113,6 @@ class DroneHandler(olympe.EventListener):
 
     def frame_processing(self):
 
-        # # TODO: check if I can just output jpeg instead raw
-        # command = [
-        #     'ffmpeg',
-        #     '-probesize', '128',
-        #     '-analyzeduration', '1000',
-        #     '-r', '30',
-        #     '-c:v', 'h264',
-        #     '-rtbufsize', '1G',
-        #     '-i', f'rtsp://{DRONE_IP}/live',
-        #     '-preset:v', 'ultrafast',
-        #     '-q:v', '1',
-        #     '-b:v', '500K',
-        #     '-maxrate', '500K',
-        #     '-bufsize', '250K',
-        #     '-crf', '50',
-        #     '-s', '1280x720',
-        #     '-f', 'rawvideo',
-        #     '-pix_fmt', 'bgr24',
-        #     'pipe:'
-        # ]
-
-        # # TODO: fix this so when the application is closed stdout is reclaimed
-        # p = subprocess.Popen(command, stdout=subprocess.PIPE)
-
         WEBCAM_RAW_RES = (1280, 720)
         FRAMERATE = 24
         vcap = cv2.VideoCapture("rtsp://192.168.53.1:554/live")
@@ -147,10 +124,6 @@ class DroneHandler(olympe.EventListener):
         while self.running:
 
             try:
-                #raw_frame = p.stdout.read(width*height*3)
-                #frame = np.frombuffer(raw_frame, np.uint8)
-                #frame = frame.reshape((height, width, 3))
-
                 ret, frame = vcap.read()
                 if ret == False:
                     pass
@@ -160,13 +133,8 @@ class DroneHandler(olympe.EventListener):
                     self.frames.append(frame)
             
             except Exception as e:
-                #p.kill()
-                #time.sleep(500)
-                #p = subprocess.Popen(command, stdout=subprocess.PIPE)
                 #print(e)
                 pass
-
-        #p.kill()
 
     #@olympe.listen_event(AltitudeAboveGroundChanged(_policy='wait'))
     #def onAltitudeAboveGroundChanged(self, event, scheduler):
@@ -203,13 +171,13 @@ class DroneHandler(olympe.EventListener):
         battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
         if battery_level < 90:
             self.state = DroneState.Charging
-            print('Drone needs to charge.')
+            self.zmqmanager.log('Drone needs to charge.', level='WARNING')
             return
 
         # check cameras running
         if self.drone.get_state(camera_states)["active_cameras"] == 0:
             self.state = DroneState.Idling
-            print('Drone cameras are not functional.')
+            self.zmqmanager.log('Drone cameras are not functional.', level='ERROR')
             return
 
         # check drone sensors
@@ -217,35 +185,35 @@ class DroneHandler(olympe.EventListener):
 
         if sensors[Sensor.IMU]['sensorState'] == 0:
             self.state = DroneState.Idling
-            print('Drone IMU is not functional.')
+            self.zmqmanager.log('Drone IMU is not functional.', level='ERROR')
             return
 
         if sensors[Sensor.magnetometer]['sensorState'] == 0:
             self.state = DroneState.Idling
-            print('Drone magnetometer is not functional.')
+            self.zmqmanager.log('Drone magnetometer is not functional.', level='ERROR')
             return
         
         if sensors[Sensor.barometer]['sensorState'] == 0:
             self.state = DroneState.Idling
-            print('Drone barometer is not functional.')
+            self.zmqmanager.log('Drone barometer is not functional.', level='ERROR')
             return
         
         if sensors[Sensor.GPS]['sensorState'] == 0:
             self.state = DroneState.Idling
-            print('Drone GPS is not functional.')
+            self.zmqmanager.log('Drone GPS is not functional.', level='ERROR')
             return
         
         if sensors[Sensor.ultrasound]['sensorState'] == 0:
             self.state = DroneState.Idling
-            print('Drone ultrasound is not functional.')
+            self.zmqmanager.log('Drone ultrasound is not functional.', level='ERROR')
             return
         
         if sensors[Sensor.vertical_camera]['sensorState'] == 0:
             self.state = DroneState.Idling
-            print('Drone vertical camera is not functional.')
+            self.zmqmanager.log('Drone vertical camera is not functional.', level='ERROR')
             return
 
-        print('Drone is taking off.')
+        self.zmqmanager.log('Drone is taking off.')
 
         self.drone(
             FlyingStateChanged(state="hovering", _policy="check")
@@ -268,18 +236,18 @@ class DroneHandler(olympe.EventListener):
 
         self.drone(moveTo(self.start_lat, self.start_lng, 10, MoveTo_Orientation_mode.TO_TARGET, 0, _timeout=1000)).wait().success()
 
-        print('Drone take off is successful going to survey.')
+        self.zmqmanager.log('Drone take off is successful going to survey.')
 
-        # TODO: determine if we need to land or go into idle
+        # TODO: determine if we need to land or go into idle if there's an error
         self.state = DroneState.Surveying
 
     def surveying(self):
         maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
         self.drone(MaxTilt(maxtilt)).wait()
 
-        print('Drone is generating a surveillance path.')
+        self.zmqmanager.log('Drone is generating a surveillance path.')
         survey_path = self.geofencemanager.get_survey_path([self.start_lat, self.start_lng])
-        print('Drone has a survey path.')
+        self.zmqmanager.log('Drone has a survey path.')
 
         #self.waypoints = survey_path
 
@@ -293,7 +261,7 @@ class DroneHandler(olympe.EventListener):
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
 
-        print('Drone has completed surveillance, no targets found.')
+        self.zmqmanager.log('Drone has completed surveillance, no targets found.')
 
         self.state = DroneState.Returning
 
@@ -302,7 +270,7 @@ class DroneHandler(olympe.EventListener):
         return_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
                                                     [self.start_lat, self.start_lng])
         
-        print('Drone has generated a return home path.')
+        self.zmqmanager.log('Drone has generated a return home path.')
         
         for p in return_path:
             self.drone(
@@ -310,13 +278,13 @@ class DroneHandler(olympe.EventListener):
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
 
-        print('Drone has made it home. Landing!')
+        self.zmqmanager.log('Drone has made it home. Landing!')
 
         self.state = DroneState.Landing
 
     def landing(self):
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=120)).wait().success()
 
-        print('Drone has successfully landed.')
+        self.zmqmanager.log('Drone has successfully landed.')
 
         self.state = DroneState.Idling

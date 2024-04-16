@@ -42,6 +42,7 @@
 
         string path = "";
         while (!drone.CheckResponses(ref path));
+        while (!drone.CheckPathResponses(ref path));
 
         await JSRuntime.InvokeVoidAsync("geofenceEditor.setMarkers", path);
     }
@@ -53,6 +54,7 @@
 
         string path = "";
         while (!drone.CheckResponses(ref path));
+        while (!drone.CheckSurveyResponses(ref path));
 
         await JSRuntime.InvokeVoidAsync("geofenceEditor.setMarkers", path);
     }

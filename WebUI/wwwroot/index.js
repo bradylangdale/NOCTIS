@@ -268,7 +268,9 @@ window.geofenceEditor = {
     },
 
     setData: function(data)
-    {
+    {   
+        this.clearMarkers();
+
         polygons = [];
         geofence = [];
         
@@ -350,12 +352,8 @@ window.geofenceEditor = {
 
     setMarkers: function(data)
     {
-        for (let i = 0; i < markers.length; i++)
-        {
-            markers[i].setMap(null);
-        }
+        this.clearMarkers();
 
-        markers = [];
         var coords = [];
 
         const obj = JSON.parse(data);
@@ -400,5 +398,12 @@ window.geofenceEditor = {
 
         lines = [];
         markers = [];
+    },
+};
+
+window.logging = {
+
+    scrollToEnd: function(textarea) {
+        textarea.scrollTop = textarea.scrollHeight;
     },
 };

@@ -1,0 +1,47 @@
+@page "/logs"
+
+@using System
+@using System.Timers
+@using WebUI.Data
+
+@inject DroneControlService drone
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Logs</PageTitle>
+
+<h1>Logs</h1>
+
+<textarea readonly @ref=TextAreaRef value="@logText" class="form-control" rows="20" style="background-color:black; color:white;"></textarea>
+
+@code {
+    private Timer timer = new Timer(64);
+
+    ElementReference TextAreaRef;
+
+    string logText = "\n";
+
+    void ScrollToEnd() {
+        JSRuntime.InvokeVoidAsync("logging.scrollToEnd", new object[] {logText});
+    }   
+
+    protected override void OnInitialized()
+    {
+        timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
+        timer.AutoReset = true;
+        timer.Start(); 
+    }
+
+    private void OnTimerCallback()
+    {
+        _ = InvokeAsync(() =>
+       {    
+            try {
+                logText = drone.GetLogs();
+                StateHasChanged();
+                ScrollToEnd();
+            } catch (Exception e) {
+                Console.WriteLine(e);
+            }
+        });
+    }
+}

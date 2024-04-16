@@ -12,7 +12,8 @@ RED = -10
 # TODO: remove hardcoded paths only here for debugging purposes
 class GeofenceManager:
 
-    def __init__(self):
+    def __init__(self, zmqmanager):
+        self.zmqmanager = zmqmanager
         self.geofence = None
         self.navmesh = None
         self.mesh_size = None
@@ -24,21 +25,21 @@ class GeofenceManager:
             with open('../DroneControl/data/geofence.json', 'r') as f:
                 self.geofence = json.load(f)
             
-            print('Successfully loaded geofence.json')
+            self.zmqmanager.log('Successfully loaded geofence.json', level='DEBUG')
 
             try:
                 self.navmesh = np.loadtxt('../DroneControl/data/navmesh.data').tolist()
-                print('Successfully loaded navmesh.data')
+                self.zmqmanager.log('Successfully loaded navmesh.data', level='DEBUG')
 
                 self.kia = np.loadtxt('../DroneControl/data/kia.data').tolist()
-                print('Successfully loaded kia.data')
+                self.zmqmanager.log('Successfully loaded kia.data', level='DEBUG')
 
                 self.find_bounds()
 
                 self.pathfinder = Pathfinder(self.navmesh)
-                print('Successfully initialized the pathfinder.')
+                self.zmqmanager.log('Successfully initialized the pathfinder.', level='DEBUG')
             except:
-                print('No navmesh or kia found but geofence.json is loaded, generating *.data files.')
+                self.zmqmanager.log('No navmesh or kia found but geofence.json is loaded, generating *.data files.', level='DEBUG')
 
                 self.find_bounds()
                 self.generate_navmesh()
@@ -46,15 +47,15 @@ class GeofenceManager:
                 np.savetxt('../DroneControl/data/navmesh.data', self.navmesh, fmt='%i')
                 np.savetxt('../DroneControl/data/kia.data', self.kia, fmt='%i')
 
-                print('Navmesh generating and written.')
+                self.zmqmanager.log('Navmesh generating and written.', level='DEBUG')
                 
                 self.pathfinder = Pathfinder(self.navmesh)
-                print('Successfully initialized the pathfinder.')
+                self.zmqmanager.log('Successfully initialized the pathfinder.', level='DEBUG')
         except:
             if not self.geofence:
-                print('No geofence.json found.')
+                self.zmqmanager.log('No geofence.json found.', level='DEBUG')
             else:
-                print('Error generating and saving navmesh.')
+                self.zmqmanager.log('Error generating and saving navmesh.', level='ERROR')
 
     def update_geo_nav_data(self, geofence):
         self.geofence = json.loads(geofence)
@@ -67,10 +68,10 @@ class GeofenceManager:
         np.savetxt('../DroneControl/data/navmesh.data', self.navmesh, fmt='%i')
         np.savetxt('../DroneControl/data/kia.data', self.kia, fmt='%i')
 
-        print('Navmesh generating and rewritten.')
+        self.zmqmanager.log('Navmesh generating and rewritten.', level='DEBUG')
         
         self.pathfinder = Pathfinder(self.navmesh)
-        print('Successfully reinitialized the pathfinder.')
+        self.zmqmanager.log('Successfully reinitialized the pathfinder.', level='DEBUG')
 
     def find_bounds(self):
         initial_point = self.geofence[0]['data'][0]
@@ -307,7 +308,7 @@ class GeofenceManager:
 
         return new_path
 
-    def get_path(self, start, end):
+    def get_path(self, start, end, log_return=False):
         start_index = self.latlng_to_index(start)
         end_index = self.latlng_to_index(end)
 
@@ -333,7 +334,10 @@ class GeofenceManager:
         for p in path:
             coords.append(self.index_to_latlng(p))
 
-        return coords
+        if not log_return:
+            return coords
+        else:
+            self.zmqmanager.log(str(coords), level='PATH')
     
     def distance(self, p1, p2):
         return math.sqrt(math.pow(p1[0] - p2[0], 2) + math.pow(p1[1] - p2[1], 2))
@@ -351,7 +355,7 @@ class GeofenceManager:
     def check_direction(self, point, direction, radius=3):
         test_point = [point[0] + direction[0], point[1] + direction[1]]
     
-    def get_survey_path(self, start):
+    def get_survey_path(self, start, log_return=False):
         survey_mesh = copy.deepcopy(self.navmesh)
         pois = []
         pois.append(self.latlng_to_index(start))
@@ -393,4 +397,7 @@ class GeofenceManager:
         for p in ordered_pois:
             coords.append(self.index_to_latlng(p))
 
-        return coords
+        if not log_return:
+            return coords
+        else:
+            self.zmqmanager.log(str(coords), level='SURVEY')
