@@ -22,7 +22,6 @@ namespace WebUI.Data
         private Queue<string> pathQueue;
         private Queue<string> surveyQueue;
 
-
         private bool droneConnected = false;
 
         private string imagePath = "/icons/stream_default.png";
