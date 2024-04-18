@@ -138,6 +138,7 @@ class DroneHandler(olympe.EventListener):
                     Thread(target=self.stop).start()
 
             if not self.drone.connection_state():
+                time.sleep(0.5)
                 self.zmqmanager.log('Attempting to reconnect!')
                 self.start()
 

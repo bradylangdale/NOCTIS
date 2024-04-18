@@ -403,7 +403,7 @@ window.geofenceEditor = {
 
 window.logging = {
 
-    scrollToEnd: function(textarea) {
-        textarea.scrollTop = textarea.scrollHeight;
+    scrollToEnd: function(scrollable) {
+        scrollable.scrollTop = scrollable.scrollHeight;
     },
 };

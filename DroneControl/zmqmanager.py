@@ -37,7 +37,7 @@ class ZMQManager:
 
             if message == 'Survey':
 
-                socket.send_string('Received: Survey')
+                socket.send_string('ECHO: Survey')
 
                 self.log('Stopping Olympe Drone connection.')
                 if self.drone.stop():
@@ -56,7 +56,7 @@ class ZMQManager:
             elif message == 'GetCurrentFrame':
                 
                 # This call is instanteous and always will be?
-                #socket.send_string('Received: GetCurrentFrame')
+                #socket.send_string('ECHO: GetCurrentFrame')
 
                 try:
                     if len(self.drone.shared_frames) > 0:
@@ -69,20 +69,20 @@ class ZMQManager:
 
             elif message == 'ConnectDrone':
 
-                socket.send_string('Received: ConnectDrone')
+                socket.send_string('ECHO: ConnectDrone')
 
                 Thread(target=self.drone.start).start()
 
             elif message == 'DisconnectDrone':
 
-                socket.send_string('Received: DisconnectDrone')
+                socket.send_string('ECHO: DisconnectDrone')
 
                 Thread(target=self.drone.stop).start()
 
             elif message[:9] == 'Geofence:':
 
                 # TODO: rename this to SetGeofence
-                socket.send_string('Received: Geofence')
+                socket.send_string('ECHO: Geofence')
 
                 Thread(target=self.geofencemanager.update_geo_nav_data, args=(message[10:])).start()
                 self.log('Geofence saving.')
@@ -90,7 +90,7 @@ class ZMQManager:
             elif message == 'GetGeofence':
 
                 # This is quick
-                #socket.send_string('Received: GetGeofence')
+                #socket.send_string('ECHO: GetGeofence')
 
                 try:
                     with open('../DroneControl/data/geofence.json', 'r') as f:
@@ -100,7 +100,7 @@ class ZMQManager:
 
             elif message[:9] == 'MakePath:':
 
-                socket.send_string('Received: MakePath')
+                socket.send_string('ECHO: MakePath')
 
                 markers = json.loads(message[10:])
                 if len(markers) == 2:
@@ -112,7 +112,7 @@ class ZMQManager:
 
             elif message[:11] == 'MakeSurvey:':
 
-                socket.send_string('Received: MakeSurvey')
+                socket.send_string('ECHO: MakeSurvey')
 
                 markers = json.loads(message[12:])
                 if len(markers) == 1:
@@ -139,7 +139,7 @@ class ZMQManager:
                 socket.send_string('Successful Shutdown Drone Control.')
 
             else:
-                socket.send_string('Received: ' + message)
+                socket.send_string('ECHO: ' + message)
                 self.log('Received Unknown Message: ' + message, level='ERROR')
 
         print('ZMQ has shutdown!')

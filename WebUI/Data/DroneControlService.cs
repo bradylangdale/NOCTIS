@@ -18,8 +18,6 @@ namespace WebUI.Data
 
         private uint LOG_LENGTH = 120;
         private Queue<string> logs;
-        private string log = "Initializing...\n";
-        private bool log_updated = true;
 
         private Queue<string> pathQueue;
         private Queue<string> surveyQueue;
@@ -64,7 +62,7 @@ namespace WebUI.Data
             }
         }
 
-        public bool CheckResponses(ref string response)
+        public bool CheckResponses(ref string response, bool log = true)
         {
             if (!running) return false;
 
@@ -73,7 +71,7 @@ namespace WebUI.Data
                 if (inQueue.Count > 0)
                 {
                     response = inQueue.Dequeue();
-                    logs.Enqueue(response);
+                    if (log) logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + response);
                     return true;
                 } else {
                     return false;
@@ -92,7 +90,7 @@ namespace WebUI.Data
                 if (pathQueue.Count > 0)
                 {
                     response = pathQueue.Dequeue();
-                    logs.Enqueue("DEBUG: Received test path.");
+                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Received test path.");
                     return true;
                 } else {
                     return false;
@@ -111,7 +109,7 @@ namespace WebUI.Data
                 if (surveyQueue.Count > 0)
                 {
                     response = surveyQueue.Dequeue();
-                    logs.Enqueue("DEBUG: Received test survey path.");
+                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Received test survey path.");
                     return true;
                 } else {
                     return false;
@@ -119,25 +117,19 @@ namespace WebUI.Data
             }
         }
 
-        public bool GetLogs(ref string response)
+        public bool GetLogs(ref List<string[]> response)
         {
             if (!running) return false;
 
-            if (log_updated) return false;
-
-            log = "";
+            response.Clear();
 
             lock (logs)
             {
                 foreach (string line in logs)
                 {
-                    log += line + "\n";
+                    response.Add(line.Split(": "));
                 }
             }
-
-            log_updated = true;
-
-            response = log;
 
             return true;
         }
@@ -162,8 +154,6 @@ namespace WebUI.Data
                 surveyQueue = new Queue<string>();
 
                 logs = new Queue<string>();
-                log = "Reinitializing...\n";
-                log_updated = true;
 
                 StartDroneService();
             } catch (Exception e)
@@ -265,8 +255,7 @@ namespace WebUI.Data
 
                                     if (logs.Count > LOG_LENGTH) logs.Dequeue();
 
-                                    log_updated = false;
-                                    logs.Enqueue(line);
+                                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + line);
 
                                     client.SendFrame("CheckLogs");
 

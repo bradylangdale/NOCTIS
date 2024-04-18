@@ -2,6 +2,7 @@
 
 @using System
 @using System.Timers
+@using System.Collections.Generic
 @using WebUI.Data
 
 @inject DroneControlService drone
@@ -10,35 +11,72 @@
 <PageTitle>Logs</PageTitle>
 
 <h1>Logs</h1>
-<textarea readonly class="logger" @ref=TextAreaRef value="@logText"></textarea>
+<div class="logger" @ref=LoggerRef >
+<table>
+    @foreach (string[] line in logs)
+    {
+        @switch(line[1])
+        {
+            case "DEBUG":
+                <tr style="background-color: yellow; color: black;">
+                    <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
+                </tr>
+                break;
+            case "STARTUP":
+                <tr style="background-color: green; color: black;">
+                    <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
+                </tr>
+                break;
+            case "ERROR":
+                <tr style="background-color: red; color: black;">
+                    <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
+                </tr>
+                break;
+            case "ECHO":
+                <tr style="background-color: grey; color: black;">
+                    <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
+                </tr>
+                break;
+            default:
+                <tr>
+                    <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
+                </tr>
+                break;
+        }
+    }
+</table>
+</div>
+
 
 @code {
     private Timer timer = new Timer(250);
 
-    ElementReference TextAreaRef;
+    private List<string[]> logs = new List<string[]>();
+    private int last_count = 0;
 
-    string logText = "Initializing...\n";
-
-    void ScrollToEnd() {
-        JSRuntime.InvokeVoidAsync("logging.scrollToEnd", new object[] {TextAreaRef});
-    }   
+    ElementReference LoggerRef;
 
     protected override void OnInitialized()
     {
+        last_count = 0;
         timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
         timer.AutoReset = true;
-        timer.Start(); 
-    }
+        timer.Start();
+    }  
 
     private void OnTimerCallback()
     {
         _ = InvokeAsync(() =>
        {    
             try {
-                if (drone.GetLogs(ref logText))
+                if (drone.GetLogs(ref logs))
                 {
-                    StateHasChanged();
-                    ScrollToEnd();
+                    if (last_count != logs.Count)
+                    {
+                        last_count = logs.Count;
+                        StateHasChanged();
+                        JSRuntime.InvokeVoidAsync("logging.scrollToEnd", new object[] {LoggerRef});
+                    }
                 }
             } catch (Exception e) {
                 Console.WriteLine(e);
