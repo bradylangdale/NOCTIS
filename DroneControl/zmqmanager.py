@@ -57,7 +57,7 @@ class ZMQManager:
 
                 try:
                     if len(self.drone.shared_frames) > 0:
-                            socket.send_string(cv2.imencode('.jpg', self.drone.shared_frames.pop(0), JPG_QUALITY)[1].tobytes().decode('iso-8859-1'))
+                            socket.send_string(cv2.imencode('.jpg', self.drone.shared_frames[0], JPG_QUALITY)[1].tobytes().decode('iso-8859-1'))
                     else:
                         socket.send_string('Not Ready')
                 except Exception as e:

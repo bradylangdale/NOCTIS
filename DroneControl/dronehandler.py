@@ -68,9 +68,6 @@ class DroneHandler(olympe.EventListener):
         subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/'.split(' '))
         subprocess.run(f'mkdir -p {os.getcwd()}/wwwroot/Data/Videos/'.split(' '))
 
-        #self.shared_array = Array(ctypes.c_uint8, 2764800)
-        #self.frame = np.frombuffer(self.shared_array.get_obj(), dtype=np.uint8).reshape((720, 1280, 3))
-
         self.manager = Manager()
         self.shared_frames = self.manager.list()
 
@@ -127,20 +124,27 @@ class DroneHandler(olympe.EventListener):
         vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
         vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
+        # capture every third frame
+        count = 0
         while self.running:
+            
+            if count == 2:
+                try:
+                    ret, frame = vcap.read()
+                    if ret == False:
+                        pass
+                    else:
+                        if len(self.shared_frames) > 0:
+                            self.shared_frames[0] = frame
+                        else:
+                            self.shared_frames.append(frame)
+                except Exception as e:
+                    print(e)
 
-            try:
-                ret, frame = vcap.read()
-                if ret == False:
-                    pass
-                else:
-                    if len(self.shared_frames) > 4:
-                        self.shared_frames.pop(0)
-                    self.shared_frames.append(frame)
-
-            except Exception as e:
-                print(e)
-                pass
+                count = 0
+            else:
+                vcap.grab()
+                count += 1
 
     #@olympe.listen_event(AltitudeAboveGroundChanged(_policy='wait'))
     #def onAltitudeAboveGroundChanged(self, event, scheduler):
