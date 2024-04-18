@@ -93,10 +93,10 @@ class DroneHandler(olympe.EventListener):
             self.running = True
             self.video_thread.start()
             
-            self.log('Connected to the drone.')
+            self.zmqmanager.log('Connected to the drone.')
             return True
         
-        self.log('Failed to connect to the drone.', level='ERROR')
+        self.zmqmanager.log('Failed to connect to the drone.', level='ERROR')
         return False
 
     def stop(self): 
@@ -107,10 +107,10 @@ class DroneHandler(olympe.EventListener):
                 time.sleep(10)
                 self.video_thread.join()
 
-            self.log('Disconnected the drone.')
+            self.zmqmanager.log('Disconnected the drone.')
             return True
 
-        self.log('Failed to disconnect was a drone connected?', level='ERROR')
+        self.zmqmanager.log('Failed to disconnect was a drone connected?', level='ERROR')
         return False
 
     def set_geo(self, geo):

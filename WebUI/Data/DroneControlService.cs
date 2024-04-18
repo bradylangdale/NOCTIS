@@ -18,6 +18,8 @@ namespace WebUI.Data
 
         private uint LOG_LENGTH = 120;
         private Queue<string> logs;
+        private string log = "Initializing...\n";
+        private bool log_updated = true;
 
         private Queue<string> pathQueue;
         private Queue<string> surveyQueue;
@@ -39,6 +41,8 @@ namespace WebUI.Data
 
         public void SendCommand(string cmd)
         {
+            if (!running) return;
+
             lock (outQueue)
             {
                 outQueue.Enqueue(cmd);
@@ -60,6 +64,8 @@ namespace WebUI.Data
 
         public bool CheckResponses(ref string response)
         {
+            if (!running) return false;
+
             lock (inQueue)
             {
                 if (inQueue.Count > 0)
@@ -74,6 +80,8 @@ namespace WebUI.Data
 
         public bool CheckPathResponses(ref string response)
         {
+            if (!running) return false;
+
             while (pathQueue.Count == 0) Thread.Sleep(100);
 
             lock (pathQueue)
@@ -90,6 +98,8 @@ namespace WebUI.Data
 
         public bool CheckSurveyResponses(ref string response)
         {
+            if (!running) return false;
+
             while (surveyQueue.Count == 0) Thread.Sleep(100);
 
             lock (surveyQueue)
@@ -106,7 +116,11 @@ namespace WebUI.Data
 
         public string GetLogs()
         {
-            string log = "";
+            if (!running) return "Initializing...\n";
+
+            if (log_updated) return log;
+
+            log = "";
 
             lock (logs)
             {
@@ -115,6 +129,8 @@ namespace WebUI.Data
                     log += line + "\n";
                 }
             }
+
+            log_updated = true;
 
             return log;
         }
@@ -148,13 +164,11 @@ namespace WebUI.Data
         {
             string home = System.Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             string cwd = System.IO.Directory.GetCurrentDirectory().Replace("WebUI", "");
-            
-            RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
-
-            Thread.Sleep(2000);
 
             thread = new Thread(() =>
             {
+                RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
+                Thread.Sleep(1000);
                 using (var client = new RequestSocket())
                 {   
                     int display_num = 0;
@@ -218,6 +232,7 @@ namespace WebUI.Data
                                 {
                                     if (logs.Count > LOG_LENGTH) logs.Dequeue();
 
+                                    log_updated = false;
                                     logs.Enqueue(line);
 
                                     client.SendFrame("CheckLogs");
