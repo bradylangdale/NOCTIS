@@ -119,11 +119,11 @@ namespace WebUI.Data
             }
         }
 
-        public string GetLogs()
+        public bool GetLogs(ref string response)
         {
-            if (!running) return "Initializing...\n";
+            if (!running) return false;
 
-            if (log_updated) return log;
+            if (log_updated) return false;
 
             log = "";
 
@@ -137,7 +137,9 @@ namespace WebUI.Data
 
             log_updated = true;
 
-            return log;
+            response = log;
+
+            return true;
         }
 
         public void RestartDroneService()

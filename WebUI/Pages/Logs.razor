@@ -10,8 +10,7 @@
 <PageTitle>Logs</PageTitle>
 
 <h1>Logs</h1>
-
-<textarea readonly @ref=TextAreaRef value="@logText" class="form-control" rows="20" style="background-color:black; color:white;"></textarea>
+<textarea readonly class="logger" @ref=TextAreaRef value="@logText"></textarea>
 
 @code {
     private Timer timer = new Timer(250);
@@ -21,7 +20,7 @@
     string logText = "Initializing...\n";
 
     void ScrollToEnd() {
-        JSRuntime.InvokeVoidAsync("logging.scrollToEnd", new object[] {logText});
+        JSRuntime.InvokeVoidAsync("logging.scrollToEnd", new object[] {TextAreaRef});
     }   
 
     protected override void OnInitialized()
@@ -36,9 +35,11 @@
         _ = InvokeAsync(() =>
        {    
             try {
-                logText = drone.GetLogs();
-                StateHasChanged();
-                ScrollToEnd();
+                if (drone.GetLogs(ref logText))
+                {
+                    StateHasChanged();
+                    ScrollToEnd();
+                }
             } catch (Exception e) {
                 Console.WriteLine(e);
             }
