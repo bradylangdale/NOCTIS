@@ -10,23 +10,46 @@
 
 <h1>Status</h1>
 
-<p><button @onclick="Connect">Connect</button></p>
-<p><button @onclick="Disconnect">Disconnect</button></p>
-<p><button @onclick="Survey">Survey</button></p>
-<p><button @onclick="Restart">Restart</button></p>
-<p><label>@response</label></p>
+<h5>Debugging Commands</h5>
+<p>
+<button @onclick="Connect">Connect</button>
+<button @onclick="Disconnect">Disconnect</button>
+<button @onclick="Survey">Survey</button>
+<button @onclick="Restart">Restart</button>
+</p>
+<p><label>@("DCS Response: " + response)</label></p>
+
+<h5>State of Health</h5>
+<div><label>@("Connection - " + connection)</label></div>
+<div><label>@("Battery Level - " + battery + "%")</label></div>
+<div><label>@("Cameras - " + cams)</label></div>
+<div><label>@("IMU - " + imu)</label></div>
+<div><label>@("Magnetometer - " + mag)</label></div>
+<div><label>@("Barometer - " + baro)</label></div>
+<div><label>@("GPS - " + gps)</label></div>
+<div><label>@("Ultrasonic - " + ultra)</label></div>
+<div><label>@("Vertical Camera - " + vert)</label></div>
 
 @code {
-    public string imagePath = "";
-    private Timer timer = new Timer(100);
+    public string imagePath = "N/A"; 
+    private Timer timer = new Timer(1000);
 
     public string response = "N/A";
+    private string connection = "Disconnected"; 
+    private string battery = "N/A"; 
+    private string cams = "N/A"; 
+    private string imu = "N/A"; 
+    private string mag = "N/A"; 
+    private string baro = "N/A"; 
+    private string gps = "N/A"; 
+    private string ultra = "N/A"; 
+    private string vert = "N/A"; 
 
     protected override void OnInitialized()
     {
-        //timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
-        //timer.AutoReset = true;
-        //timer.Start(); 
+        timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
+        timer.AutoReset = true;
+        timer.Start(); 
     }
 
     public void Connect()
@@ -63,9 +86,7 @@
         drone.StreamState(false);
         drone.SendCommand("Terminate");
 
-        while(!drone.CheckResponses(ref response));
-        
-        drone.RestartDroneService();
+        while(!drone.CheckResponses(ref response, false));
 
         StateHasChanged();
     }
@@ -75,7 +96,8 @@
         _ = InvokeAsync(() =>
        {    
             try {
-                //imagePath = drone.GetStatus();
+                drone.GetSOH(ref connection, ref battery, ref cams,
+                    ref imu, ref mag, ref baro, ref gps, ref ultra, ref vert);
                 StateHasChanged();
             } catch (Exception e) {
                 Console.WriteLine(e);

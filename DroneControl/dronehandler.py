@@ -135,6 +135,15 @@ class DroneHandler(olympe.EventListener):
         return False
     
     def heartbeat(self):
+        last_bat = 0
+        cams = "Healthy"
+        imu = "Healthy"
+        mag = "Healthy"
+        baro = "Healthy"
+        gps = "Healthy"
+        ultra = "Healthy"
+        vert = "Healthy"
+
         while self.zmqmanager.running:       
             if self.drone.connection_state() != self.last_connection_state:
                 self.last_connection_state = self.drone.connection_state()
@@ -155,6 +164,64 @@ class DroneHandler(olympe.EventListener):
                 time.sleep(0.5)
                 self.zmqmanager.log('Attempting to reconnect!', level='WARNING')
                 self.start(reattempt=True)
+
+            if self.drone.connection_state():
+                # check battery level
+                battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
+
+                if battery_level % 25 == 0 and battery_level != last_bat:
+                    self.zmqmanager.log('Battery Level at ' + str(battery_level) + '%', level='WARNING')
+                
+                last_bat = battery_level
+
+                # check cameras running
+                if self.drone.get_state(camera_states)["active_cameras"] == 1:
+                    cams = "Healthy"
+                elif cams != 'Unhealthy':
+                    self.zmqmanager.log("Cameras are reporting UNHEALTHY!", level='ERROR')
+                    cams = "Unhealthy"
+
+                # check drone sensors
+                sensors = self.drone.get_state(SensorsStatesListChanged)
+                if sensors[Sensor.IMU]['sensorState'] == 1:
+                    imu = "Healthy"
+                else:
+                    self.zmqmanager.log("IMU is reporting UNHEALTHY!", level='ERROR')
+                    imu = "Unhealthy"
+
+                if sensors[Sensor.magnetometer]['sensorState'] == 1:
+                    mag = "Healthy"
+                else:
+                    self.zmqmanager.log("Magnetometer is reporting UNHEALTHY!", level='ERROR')
+                    mag = "Unhealthy"
+
+                if sensors[Sensor.barometer]['sensorState'] == 1:
+                    baro = "Healthy"
+                else:
+                    self.zmqmanager.log("Barometer is reporting UNHEALTHY!", level='ERROR')
+                    baro = "Unhealthy"
+
+                if sensors[Sensor.GPS]['sensorState'] == 1:
+                    gps = "Healthy"
+                else:
+                    self.zmqmanager.log("GPS is reporting UNHEALTHY!", level='ERROR')
+                    gps = "Unhealthy"
+
+                if sensors[Sensor.ultrasound]['sensorState'] == 1:
+                    ultra = "Healthy"
+                else:
+                    self.zmqmanager.log("Ultrasound is reporting UNHEALTHY!", level='ERROR')
+                    ultra = "Unhealthy"
+
+                if sensors[Sensor.vertical_camera]['sensorState'] == 1:
+                    vert = "Healthy"
+                else:
+                    self.zmqmanager.log("Vertical Camera is reporting UNHEALTHY!", level='ERROR')
+                    vert = "Unhealthy"
+
+                self.zmqmanager.log(f'Connected,{battery_level},{cams},{imu},{mag},{baro},{gps},{ultra},{vert}', level='SOH')
+            else:
+                self.zmqmanager.log(f'Disconnected,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A', level='SOH')
 
             time.sleep(1)
 

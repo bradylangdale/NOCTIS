@@ -26,6 +26,17 @@ namespace WebUI.Data
 
         private string imagePath = "/icons/stream_default.png";
 
+        // Drone SOH parameters
+        private string soh_connection = "Disconnected";
+        private string soh_battery = "N/A";
+        private string soh_cams = "N/A";
+        private string soh_imu = "N/A";
+        private string soh_mag = "N/A";
+        private string soh_baro = "N/A";
+        private string soh_gps = "N/A";
+        private string soh_ultra = "N/A";
+        private string soh_vert = "N/A";
+
         public DroneControlService()
         {
             outQueue = new Queue<string>();
@@ -134,6 +145,21 @@ namespace WebUI.Data
             return true;
         }
 
+        public void GetSOH(ref string con, ref string bat, ref string cam,
+            ref string imu, ref string mag, ref string baro,
+            ref string gps, ref string ultra, ref string vert)
+        {
+            con = soh_connection;
+            bat = soh_battery;
+            cam = soh_cams;
+            imu = soh_imu;
+            mag = soh_mag;
+            baro = soh_baro;
+            gps = soh_gps;
+            ultra = soh_ultra;
+            vert = soh_vert;
+        }
+
         public void RestartDroneService()
         {
             try {
@@ -202,6 +228,13 @@ namespace WebUI.Data
                                     {
                                         inQueue.Enqueue(message);
                                     }
+
+                                    if (message == "Successful Shutdown Drone Control.")
+                                    {
+                                        running = false;
+                                        RestartDroneService();
+                                        break;
+                                    }
                                 } catch (Exception e) {
                                     Console.WriteLine(e);
                                 }
@@ -213,7 +246,7 @@ namespace WebUI.Data
 
                             string line = client.ReceiveFrameString();
 
-                            while (line != "No Messages")
+                            while (line != "No Messages" && running)
                             {
                                 if (line.Contains("PATH: "))
                                 {
@@ -235,6 +268,25 @@ namespace WebUI.Data
                                     {
                                         surveyQueue.Enqueue(line);
                                     }
+
+                                    client.SendFrame("CheckLogs");
+
+                                    line = client.ReceiveFrameString();
+                                } else if (line.Contains("SOH: "))
+                                {
+                                    line = line.Replace("SOH: ", "");
+                                    
+                                    string[] soh = line.Split(",");
+
+                                    soh_connection = soh[0];
+                                    soh_battery = soh[1];
+                                    soh_cams = soh[2];
+                                    soh_imu = soh[3];
+                                    soh_mag = soh[4];
+                                    soh_baro = soh[5];
+                                    soh_gps = soh[6];
+                                    soh_ultra = soh[7];
+                                    soh_vert = soh[8];
 
                                     client.SendFrame("CheckLogs");
 
