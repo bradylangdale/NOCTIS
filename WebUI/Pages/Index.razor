@@ -60,8 +60,15 @@
     }
 
     public void Restart()
-    {
+    {   
+        drone.StreamState(false);
+        drone.SendCommand("Terminate");
+
+        while(!drone.CheckResponses(ref response));
+        
         drone.RestartDroneService();
+
+        StateHasChanged();
     }
 
     private void OnTimerCallback()

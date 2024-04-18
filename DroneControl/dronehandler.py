@@ -29,6 +29,7 @@ from olympe.messages.camera import camera_states
 from olympe.enums.common.CommonState import SensorsStatesListChanged_SensorName as Sensor
 from olympe.enums.ardrone3.Piloting import MoveTo_Orientation_mode
 from multiprocessing import Process, Manager
+from ctypes import c_bool
 
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
@@ -40,7 +41,7 @@ if SIM:
 else:
     DRONE_IP = os.environ.get("DRONE_IP", "192.168.53.1")
 
-DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT")
+DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT", '554')
 
 
 class DroneState(Enum):
@@ -71,8 +72,8 @@ class DroneHandler(olympe.EventListener):
         self.manager = Manager()
         self.shared_frames = self.manager.list()
 
-        self.video_thread = Process(target=self.frame_processing)
-        self.running = False
+        self.video_thread = None
+        self.running = self.manager.Value(c_bool, False)
         self.survey_complete = True
         self.geofencemanager = None
         self.zmqmanager = zmqmanager
@@ -87,10 +88,15 @@ class DroneHandler(olympe.EventListener):
         self.current_i = 0
 
     def start(self):
+        if self.running.value:
+            self.zmqmanager.log('Already connected.', level='DEBUG')
+            return True
+
         # Connect to drone
         if self.drone.connect(retry=3):
             self.drone(setPilotingSource(source="Controller")).wait()
-            self.running = True
+            self.running.value = True
+            self.video_thread = Process(target=self.frame_processing)
             self.video_thread.start()
             
             self.zmqmanager.log('Connected to the drone.')
@@ -100,14 +106,19 @@ class DroneHandler(olympe.EventListener):
         return False
 
     def stop(self): 
-        if self.drone.disconnect():
-            if self.running:
-                self.running = False
-
-                time.sleep(10)
-                self.video_thread.join()
-
+        if not self.running.value:
+            self.zmqmanager.log('Already disconnected.', level='DEBUG')
+            return True
+        
+        if self.drone.disconnect(timeout=1):
             self.zmqmanager.log('Disconnected the drone.')
+
+            if self.running.value:
+                self.running.value = False
+                self.shared_frames[:] = []
+
+                time.sleep(100)
+
             return True
 
         self.zmqmanager.log('Failed to disconnect was a drone connected?', level='ERROR')
@@ -120,7 +131,7 @@ class DroneHandler(olympe.EventListener):
 
         WEBCAM_RAW_RES = (1280, 720)
         FRAMERATE = 24
-        vcap = cv2.VideoCapture("rtsp://192.168.53.1:554/live")
+        vcap = cv2.VideoCapture(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live')
         vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
         vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
         vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
@@ -128,7 +139,7 @@ class DroneHandler(olympe.EventListener):
 
         # capture every third frame
         count = 0
-        while self.running:
+        while self.running.value:
             
             if count == 2:
                 try:

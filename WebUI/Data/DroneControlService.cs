@@ -52,6 +52,8 @@ namespace WebUI.Data
         public void StreamState(bool state)
         {
             droneConnected = state;
+
+            if (!state) imagePath = "/icons/stream_default.png";
         }
 
         public string GetCurrentFrame()
@@ -71,6 +73,7 @@ namespace WebUI.Data
                 if (inQueue.Count > 0)
                 {
                     response = inQueue.Dequeue();
+                    logs.Enqueue(response);
                     return true;
                 } else {
                     return false;
@@ -89,6 +92,7 @@ namespace WebUI.Data
                 if (pathQueue.Count > 0)
                 {
                     response = pathQueue.Dequeue();
+                    logs.Enqueue("DEBUG: Received test path.");
                     return true;
                 } else {
                     return false;
@@ -107,6 +111,7 @@ namespace WebUI.Data
                 if (surveyQueue.Count > 0)
                 {
                     response = surveyQueue.Dequeue();
+                    logs.Enqueue("DEBUG: Received test survey path.");
                     return true;
                 } else {
                     return false;
@@ -135,18 +140,33 @@ namespace WebUI.Data
             return log;
         }
 
-        // TODO: add null checks on thread
         public void RestartDroneService()
         {
-            running = false;
+            try {
+                // for good measure
+                RunCommandWithBash("killall -9 python3");
 
-            if (thread is not null) {
-                thread.Interrupt();
-                thread.Join(1000);
+                running = false;
+                if (thread is not null) {
+                    thread.Join(1000);
+                }
+
+                running = true;
+                log = "Initializing...\n";
+                log_updated = true;
+                droneConnected = false;
+
+                outQueue = new Queue<string>();
+                inQueue = new Queue<string>();
+                logs = new Queue<string>();
+                pathQueue = new Queue<string>();
+                surveyQueue = new Queue<string>();
+
+                StartDroneService();
+            } catch (Exception e)
+            {
+                Console.WriteLine(e);
             }
-
-            running = true;
-            StartDroneService();
         }
 
         public void Dispose()
@@ -156,7 +176,7 @@ namespace WebUI.Data
             if (thread is not null)
             {
                 thread.Interrupt();
-                thread.Join(1000);
+                thread.Join(250);
             }
         }
 
@@ -168,7 +188,7 @@ namespace WebUI.Data
             thread = new Thread(() =>
             {
                 RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
-                Thread.Sleep(1000);
+                Thread.Sleep(250);
                 using (var client = new RequestSocket())
                 {   
                     int display_num = 0;
@@ -230,6 +250,21 @@ namespace WebUI.Data
                                     line = client.ReceiveFrameString();
                                 } else 
                                 {
+                                    if (line.Contains("STARTUP: "))
+                                    {
+                                        outQueue.Enqueue("ConnectDrone");
+                                    }
+
+                                    if (line.Contains("LOG: Connected to the drone."))
+                                    {
+                                        droneConnected = true;
+                                    }
+
+                                    if (line.Contains("LOG: Disconnected the drone."))
+                                    {
+                                        droneConnected = false;
+                                    }
+
                                     if (logs.Count > LOG_LENGTH) logs.Dequeue();
 
                                     log_updated = false;

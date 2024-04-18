@@ -5,6 +5,7 @@ from geofencemanager import GeofenceManager
 import json
 import numpy as np
 import cv2
+import time
 
 JPG_QUALITY = [int(cv2.IMWRITE_JPEG_QUALITY), 20]
 
@@ -28,6 +29,8 @@ class ZMQManager:
         context = zmq.Context()
         socket = context.socket(zmq.REP)
         socket.bind('tcp://*:5555')
+
+        self.log('Drone Control Service is alive!', level='STARTUP')
 
         while(self.running):
             message = socket.recv().decode('utf-8')
@@ -126,10 +129,21 @@ class ZMQManager:
                 else:
                     socket.send_string('No Messages')
 
+            elif message == "Terminate":
+
+                Thread(target=self.drone.stop).start()
+                self.running = False
+
+                time.sleep(0.25)
+
+                socket.send_string('Successful Shutdown Drone Control.')
+
             else:
                 socket.send_string('Received: ' + message)
                 self.log('Received Unknown Message: ' + message, level='ERROR')
 
+        print('ZMQ has shutdown!')
+        time.sleep(0.25)
         socket.close()
 
     def log(self, msg, level='LOG'):
