@@ -274,7 +274,7 @@ namespace WebUI.Data
                             }
                         }
 
-                        Thread.Sleep(33);
+                        Thread.Sleep(100);
                     }
                 }
 

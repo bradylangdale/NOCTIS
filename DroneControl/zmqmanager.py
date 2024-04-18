@@ -68,20 +68,13 @@ class ZMQManager:
 
                 socket.send_string('Received: ConnectDrone')
 
-                if self.drone.start():
-                    self.log('Connected to the drone.')
-                else:
-                    self.log('Failed to connect to the drone.', level='ERROR')
+                Thread(target=self.drone.start).start()
 
             elif message == 'DisconnectDrone':
 
                 socket.send_string('Received: DisconnectDrone')
 
-                # TODO: is this necessary? it seems duplicated
-                if self.drone.stop():
-                    self.log('Disconnected the drone.')
-                else:
-                    self.log('Failed to disconnect was a drone connected?', level='ERROR')
+                Thread(target=self.drone.stop).start()
 
             elif message[:9] == 'Geofence:':
 

@@ -91,15 +91,15 @@ class DroneHandler(olympe.EventListener):
         if self.drone.connect(retry=3):
             self.drone(setPilotingSource(source="Controller")).wait()
             self.running = True
-
-            #self.video_thread = Thread(target=self.frame_processing)
             self.video_thread.start()
-
+            
+            self.log('Connected to the drone.')
             return True
-
+        
+        self.log('Failed to connect to the drone.', level='ERROR')
         return False
 
-    def stop(self):
+    def stop(self): 
         if self.drone.disconnect():
             if self.running:
                 self.running = False
@@ -107,8 +107,10 @@ class DroneHandler(olympe.EventListener):
                 time.sleep(10)
                 self.video_thread.join()
 
+            self.log('Disconnected the drone.')
             return True
 
+        self.log('Failed to disconnect was a drone connected?', level='ERROR')
         return False
 
     def set_geo(self, geo):
