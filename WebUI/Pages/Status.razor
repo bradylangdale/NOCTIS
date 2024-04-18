@@ -1,0 +1,85 @@
+﻿@page "/status"
+
+@using System
+@using System.Timers
+@using WebUI.Data
+
+@inject DroneControlService drone
+
+<PageTitle>Status</PageTitle>
+
+<h1>Status</h1>
+
+<p><button @onclick="Connect">Connect</button></p>
+<p><button @onclick="Disconnect">Disconnect</button></p>
+<p><button @onclick="Survey">Survey</button></p>
+<p><button @onclick="Restart">Restart</button></p>
+<p><label>@response</label></p>
+
+@code {
+    public string imagePath = "";
+    private Timer timer = new Timer(100);
+
+    public string response = "N/A";
+
+    protected override void OnInitialized()
+    {
+        //timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
+        //timer.AutoReset = true;
+        //timer.Start(); 
+    }
+
+    public void Connect()
+    {
+        drone.SendCommand("ConnectDrone");
+
+        while (!drone.CheckResponses(ref response));
+
+        drone.StreamState(true);
+        StateHasChanged();
+    }
+
+    public void Disconnect()
+    {
+        drone.SendCommand("DisconnectDrone");
+        drone.StreamState(false);
+
+        while (!drone.CheckResponses(ref response));
+
+        StateHasChanged();
+    }
+
+    public void Survey()
+    {
+        drone.SendCommand("Survey");
+
+        while (!drone.CheckResponses(ref response));
+
+        StateHasChanged();
+    }
+
+    public void Restart()
+    {   
+        drone.StreamState(false);
+        drone.SendCommand("Terminate");
+
+        while(!drone.CheckResponses(ref response));
+        
+        drone.RestartDroneService();
+
+        StateHasChanged();
+    }
+
+    private void OnTimerCallback()
+    {
+        _ = InvokeAsync(() =>
+       {    
+            try {
+                //imagePath = drone.GetStatus();
+                StateHasChanged();
+            } catch (Exception e) {
+                Console.WriteLine(e);
+            }
+        });
+    }
+}
