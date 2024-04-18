@@ -22,8 +22,13 @@
                     <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
                 </tr>
                 break;
-            case "STARTUP":
+            case "SUCCESS":
                 <tr style="background-color: green; color: black;">
+                    <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
+                </tr>
+                break;
+            case "WARNING":
+                <tr style="background-color: orange; color: black;">
                     <td style="min-width: 10rem;">@line[0]</td><td>@line[1]</td><td style="width: 100%;">@line[2]</td>
                 </tr>
                 break;

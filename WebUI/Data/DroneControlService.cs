@@ -90,7 +90,7 @@ namespace WebUI.Data
                 if (pathQueue.Count > 0)
                 {
                     response = pathQueue.Dequeue();
-                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Received test path.");
+                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Generated test path.");
                     return true;
                 } else {
                     return false;
@@ -109,7 +109,7 @@ namespace WebUI.Data
                 if (surveyQueue.Count > 0)
                 {
                     response = surveyQueue.Dequeue();
-                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Received test survey path.");
+                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Generated test survey path.");
                     return true;
                 } else {
                     return false;
@@ -152,8 +152,6 @@ namespace WebUI.Data
                 inQueue = new Queue<string>();
                 pathQueue = new Queue<string>();
                 surveyQueue = new Queue<string>();
-
-                logs = new Queue<string>();
 
                 StartDroneService();
             } catch (Exception e)
@@ -243,12 +241,12 @@ namespace WebUI.Data
                                     line = client.ReceiveFrameString();
                                 } else 
                                 {
-                                    if (line.Contains("LOG: Connected to the drone."))
+                                    if (line.Contains("LOG: Connected to the Skycontroller."))
                                     {
                                         StreamState(true);
                                     }
 
-                                    if (line.Contains("LOG: Disconnected the drone."))
+                                    if (line.Contains("LOG: Disconnected from the Skycontroller."))
                                     {
                                         StreamState(false);
                                     }
@@ -256,6 +254,12 @@ namespace WebUI.Data
                                     if (logs.Count > LOG_LENGTH) logs.Dequeue();
 
                                     logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + line);
+
+                                    if (line.Contains("Drone Control requires full restart due drone connection loss. Restarting now."))
+                                    {
+                                        RestartDroneService();
+                                        break;
+                                    }
 
                                     client.SendFrame("CheckLogs");
 

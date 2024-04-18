@@ -37,9 +37,9 @@ class GeofenceManager:
                 self.find_bounds()
 
                 self.pathfinder = Pathfinder(self.navmesh)
-                self.zmqmanager.log('Successfully initialized the pathfinder.', level='DEBUG')
+                self.zmqmanager.log('Successfully initialized the pathfinder.', level='SUCCESS')
             except:
-                self.zmqmanager.log('No navmesh or kia found but geofence.json is loaded, generating *.data files.', level='DEBUG')
+                self.zmqmanager.log('No navmesh or kia found but geofence.json is loaded, generating *.data files.', level='WARNING')
 
                 self.find_bounds()
                 self.generate_navmesh()
@@ -50,10 +50,10 @@ class GeofenceManager:
                 self.zmqmanager.log('Navmesh generating and written.', level='DEBUG')
                 
                 self.pathfinder = Pathfinder(self.navmesh)
-                self.zmqmanager.log('Successfully initialized the pathfinder.', level='DEBUG')
+                self.zmqmanager.log('Successfully initialized the pathfinder.', level='SUCCESS')
         except:
             if not self.geofence:
-                self.zmqmanager.log('No geofence.json found.', level='DEBUG')
+                self.zmqmanager.log('No geofence.json found.', level='WARNING')
             else:
                 self.zmqmanager.log('Error generating and saving navmesh.', level='ERROR')
 
@@ -68,10 +68,10 @@ class GeofenceManager:
         np.savetxt('../DroneControl/data/navmesh.data', self.navmesh, fmt='%i')
         np.savetxt('../DroneControl/data/kia.data', self.kia, fmt='%i')
 
-        self.zmqmanager.log('Navmesh generating and rewritten.', level='DEBUG')
+        self.zmqmanager.log('Navmesh generated and rewritten.', level='DEBUG')
         
         self.pathfinder = Pathfinder(self.navmesh)
-        self.zmqmanager.log('Successfully reinitialized the pathfinder.', level='DEBUG')
+        self.zmqmanager.log('Successfully reinitialized the pathfinder.', level='SUCCESS')
 
     def find_bounds(self):
         initial_point = self.geofence[0]['data'][0]

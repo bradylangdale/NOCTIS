@@ -72,6 +72,7 @@ class DroneHandler(olympe.EventListener):
         self.manager = Manager()
         self.shared_frames = self.manager.list()
 
+        self.need_video_restart = False
         self.video_thread = None
         self.running = self.manager.Value(c_bool, False)
         self.survey_complete = True
@@ -90,9 +91,15 @@ class DroneHandler(olympe.EventListener):
         self.last_connection_state = False
         Thread(target=self.heartbeat).start()
 
-    def start(self):
+    def start(self, reattempt=False):
         if self.running.value:
-            self.zmqmanager.log('Already connected.', level='DEBUG')
+            self.zmqmanager.log('Already connected.', level='WARNING')
+
+            if reattempt:
+                self.zmqmanager.log('Skycontroller has not reconnected with the drone, retrying 10 seconds.', level='ERROR')
+                self.need_video_restart = True
+                time.sleep(9)
+
             return True
 
         # Connect to drone
@@ -102,7 +109,7 @@ class DroneHandler(olympe.EventListener):
             self.video_thread = Process(target=self.frame_processing)
             self.video_thread.start()
             
-            self.zmqmanager.log('Connected to the drone.')
+            self.zmqmanager.log('Connected to the Skycontroller.')
             return True
         
         self.zmqmanager.log('Failed to connect to the drone.', level='ERROR')
@@ -110,11 +117,11 @@ class DroneHandler(olympe.EventListener):
 
     def stop(self): 
         if not self.running.value:
-            self.zmqmanager.log('Already disconnected.', level='DEBUG')
+            self.zmqmanager.log('Already disconnected.', level='WARNING')
             return True
         
         if self.drone.disconnect(timeout=1):
-            self.zmqmanager.log('Disconnected the drone.')
+            self.zmqmanager.log('Disconnected from the Skycontroller.')
 
             if self.running.value:
                 self.running.value = False
@@ -132,15 +139,22 @@ class DroneHandler(olympe.EventListener):
             if self.drone.connection_state() != self.last_connection_state:
                 self.last_connection_state = self.drone.connection_state()
                 if self.last_connection_state:
-                    self.zmqmanager.log('Drone connection successful!')
+                    self.zmqmanager.log('Drone connection successful!', level='SUCCESS')
+
+                    if self.need_video_restart:
+                        self.zmqmanager.log('Drone Control requires full restart due drone connection loss. Restarting now.', level='WARNING')
+
+                        self.need_video_restart = False
                 else:
-                    self.zmqmanager.log('Drone connection failed!')
+                    self.zmqmanager.log('Drone connection failed!', level='ERROR')
+                    self.running.value = False
+                    self.shared_frames[:] = []
                     Thread(target=self.stop).start()
 
             if not self.drone.connection_state():
                 time.sleep(0.5)
-                self.zmqmanager.log('Attempting to reconnect!')
-                self.start()
+                self.zmqmanager.log('Attempting to reconnect!', level='WARNING')
+                self.start(reattempt=True)
 
             time.sleep(1)
 
@@ -279,7 +293,7 @@ class DroneHandler(olympe.EventListener):
 
         self.drone(moveTo(self.start_lat, self.start_lng, 10, MoveTo_Orientation_mode.TO_TARGET, 0, _timeout=1000)).wait().success()
 
-        self.zmqmanager.log('Drone take off is successful going to survey.')
+        self.zmqmanager.log('Drone take off is successful going to survey.', level='SUCCESS')
 
         # TODO: determine if we need to land or go into idle if there's an error
         self.state = DroneState.Surveying
@@ -290,7 +304,7 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone is generating a surveillance path.')
         survey_path = self.geofencemanager.get_survey_path([self.start_lat, self.start_lng])
-        self.zmqmanager.log('Drone has a survey path.')
+        self.zmqmanager.log('Drone has a survey path.', level='SUCCESS')
 
         #self.waypoints = survey_path
 
@@ -304,7 +318,7 @@ class DroneHandler(olympe.EventListener):
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
 
-        self.zmqmanager.log('Drone has completed surveillance, no targets found.')
+        self.zmqmanager.log('Drone has completed surveillance, no targets found.', level='SUCCESS')
 
         self.state = DroneState.Returning
 
@@ -313,7 +327,7 @@ class DroneHandler(olympe.EventListener):
         return_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
                                                     [self.start_lat, self.start_lng])
 
-        self.zmqmanager.log('Drone has generated a return home path.')
+        self.zmqmanager.log('Drone has generated a return home path.', level='SUCCESS')
 
         for p in return_path:
             self.drone(
@@ -321,13 +335,13 @@ class DroneHandler(olympe.EventListener):
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
 
-        self.zmqmanager.log('Drone has made it home. Landing!')
+        self.zmqmanager.log('Drone has made it home. Landing!', level='SUCCESS')
 
         self.state = DroneState.Landing
 
     def landing(self):
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=120)).wait().success()
 
-        self.zmqmanager.log('Drone has successfully landed.')
+        self.zmqmanager.log('Drone has successfully landed.', level='SUCCESS')
 
         self.state = DroneState.Idling

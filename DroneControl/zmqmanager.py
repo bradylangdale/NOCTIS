@@ -30,7 +30,7 @@ class ZMQManager:
         socket = context.socket(zmq.REP)
         socket.bind('tcp://*:5555')
 
-        self.log('Drone Control Service is alive!', level='STARTUP')
+        self.log('Drone Control Service is alive!', level='SUCCESS')
 
         while(self.running):
             message = socket.recv().decode('utf-8')
