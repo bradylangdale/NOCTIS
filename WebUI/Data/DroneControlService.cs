@@ -152,15 +152,16 @@ namespace WebUI.Data
                 }
 
                 running = true;
-                log = "Initializing...\n";
-                log_updated = true;
                 droneConnected = false;
 
                 outQueue = new Queue<string>();
                 inQueue = new Queue<string>();
-                logs = new Queue<string>();
                 pathQueue = new Queue<string>();
                 surveyQueue = new Queue<string>();
+
+                logs = new Queue<string>();
+                log = "Reinitializing...\n";
+                log_updated = true;
 
                 StartDroneService();
             } catch (Exception e)
@@ -250,19 +251,14 @@ namespace WebUI.Data
                                     line = client.ReceiveFrameString();
                                 } else 
                                 {
-                                    if (line.Contains("STARTUP: "))
-                                    {
-                                        outQueue.Enqueue("ConnectDrone");
-                                    }
-
                                     if (line.Contains("LOG: Connected to the drone."))
                                     {
-                                        droneConnected = true;
+                                        StreamState(true);
                                     }
 
                                     if (line.Contains("LOG: Disconnected the drone."))
                                     {
-                                        droneConnected = false;
+                                        StreamState(false);
                                     }
 
                                     if (logs.Count > LOG_LENGTH) logs.Dequeue();

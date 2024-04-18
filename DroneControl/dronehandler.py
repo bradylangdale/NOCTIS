@@ -87,6 +87,9 @@ class DroneHandler(olympe.EventListener):
         self.waypoints = []
         self.current_i = 0
 
+        self.last_connection_state = False
+        Thread(target=self.heartbeat).start()
+
     def start(self):
         if self.running.value:
             self.zmqmanager.log('Already connected.', level='DEBUG')
@@ -123,6 +126,22 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Failed to disconnect was a drone connected?', level='ERROR')
         return False
+    
+    def heartbeat(self):
+        while self.zmqmanager.running:       
+            if self.drone.connection_state() != self.last_connection_state:
+                self.last_connection_state = self.drone.connection_state()
+                if self.last_connection_state:
+                    self.zmqmanager.log('Drone connection successful!')
+                else:
+                    self.zmqmanager.log('Drone connection failed!')
+                    Thread(target=self.stop).start()
+
+            if not self.drone.connection_state():
+                self.zmqmanager.log('Attempting to reconnect!')
+                self.start()
+
+            time.sleep(1)
 
     def set_geo(self, geo):
         self.geofencemanager = geo
