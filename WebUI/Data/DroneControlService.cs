@@ -18,8 +18,9 @@ namespace WebUI.Data
         
         private uint TIMEOUT = 15;
 
-        private uint LOG_LENGTH = 120;
-        private Queue<string> logs;
+        private uint LOG_LENGTH = 360;
+        private Queue<string[]> logs;
+        private int log_update = 0;
 
         private Queue<string> pathQueue;
         private Queue<string> surveyQueue;
@@ -46,7 +47,7 @@ namespace WebUI.Data
         {
             outQueue = new Queue<string>();
             inQueue = new Queue<string>();
-            logs = new Queue<string>();
+            logs = new Queue<string[]>();
             pathQueue = new Queue<string>();
             surveyQueue = new Queue<string>();
 
@@ -72,7 +73,8 @@ namespace WebUI.Data
 
         public void LogMessage(string msg, string level = "LOG")
         {
-            logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + level + ": " + msg);
+            ++log_update;
+            logs.Enqueue((System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + level + ": " + msg).Split(": "));
         }
 
         public string GetCurrentFrame()
@@ -92,7 +94,11 @@ namespace WebUI.Data
                 if (inQueue.Count > 0)
                 {
                     response = inQueue.Dequeue();
-                    if (log) logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + response);
+                    if (log)
+                    {
+                        ++log_update;
+                        logs.Enqueue((System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + response).Split(": "));
+                    }
                     return true;
                 } else {
                     return false;
@@ -111,7 +117,9 @@ namespace WebUI.Data
                 if (pathQueue.Count > 0)
                 {
                     response = pathQueue.Dequeue();
-                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Generated test path.");
+                    
+                    ++log_update;
+                    logs.Enqueue((System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Generated test path.").Split(": "));
                     return true;
                 } else {
                     return false;
@@ -130,7 +138,9 @@ namespace WebUI.Data
                 if (surveyQueue.Count > 0)
                 {
                     response = surveyQueue.Dequeue();
-                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Generated test survey path.");
+
+                    ++log_update;
+                    logs.Enqueue((System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Generated test survey path.").Split(": "));
                     return true;
                 } else {
                     return false;
@@ -147,27 +157,21 @@ namespace WebUI.Data
             lock (mapData)
             {
                 response = mapData;
-                logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Receive updated geofence.");
+                ++log_update;
+                logs.Enqueue((System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Receive updated geofence.").Split(": "));
                 mapData = "";
                 return true;
             }
         }
 
-        public bool GetLogs(ref List<string[]> response)
+        public int GetLogs(ref List<string[]> response)
         {
-            if (!running) return false;
-
-            response.Clear();
-
             lock (logs)
             {
-                foreach (string line in logs)
-                {
-                    response.Add(line.Split(": "));
-                }
+                response = logs.ToList();
             }
 
-            return true;
+            return log_update;
         }
 
         public void GetSOH(ref string con, ref string bat, ref string cam,
@@ -408,7 +412,8 @@ namespace WebUI.Data
 
                                     if (logs.Count > LOG_LENGTH) logs.Dequeue();
 
-                                    logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + line);
+                                    ++log_update;
+                                    logs.Enqueue((System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + line).Split(": "));
 
                                     if (line.Contains("Drone Control requires full restart. Restarting now!"))
                                     {

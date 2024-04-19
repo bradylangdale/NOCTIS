@@ -57,13 +57,12 @@
     private Timer timer = new Timer(250);
 
     private List<string[]> logs = new List<string[]>();
-    private int last_count = 0;
+    private int last_id = -1;
 
     ElementReference LoggerRef;
 
     protected override void OnInitialized()
     {
-        last_count = 0;
         timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
         timer.AutoReset = true;
         timer.Start();
@@ -74,14 +73,13 @@
         _ = InvokeAsync(() =>
        {    
             try {
-                if (drone.GetLogs(ref logs))
+                int id = drone.GetLogs(ref logs);
+
+                if (id != last_id)
                 {
-                    if (last_count != logs.Count)
-                    {
-                        last_count = logs.Count;
-                        StateHasChanged();
-                        JSRuntime.InvokeVoidAsync("logging.scrollToEnd", new object[] {LoggerRef});
-                    }
+                    last_id = id;
+                    StateHasChanged();
+                    JSRuntime.InvokeVoidAsync("logging.scrollToEnd", new object[] {LoggerRef});
                 }
             } catch (Exception e) {
                 Console.WriteLine(e);

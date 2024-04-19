@@ -207,7 +207,7 @@ class DroneHandler(olympe.EventListener):
                 battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
 
                 if battery_level % 25 == 0 or battery_level != last_bat:
-                    if battery_level % 25 == 0:
+                    if battery_level % 25 == 0 and battery_level != last_bat:
                         self.zmqmanager.log('Battery Level at ' + str(battery_level) + '%', level='WARNING')
 
                     if battery_level != last_bat and battery_level <= 25:
