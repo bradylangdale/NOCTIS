@@ -90,13 +90,13 @@ class ZMQManager:
             elif message == 'GetGeofence':
 
                 # This is quick
-                #socket.send_string('ECHO: GetGeofence')
+                socket.send_string('ECHO: GetGeofence')
 
                 try:
                     with open('../DroneControl/data/geofence.json', 'r') as f:
-                        socket.send_string(f.read())
+                        self.log(f.read(), 'GEOFENCE')
                 except:
-                    socket.send_string('[]')
+                    self.log('[]', 'GEOFENCE')
 
             elif message[:9] == 'MakePath:':
 

@@ -65,10 +65,9 @@
         {
             drone.SendCommand("GetGeofence");
 
-            Thread.Sleep(100);
-
             string data = "";
-            while (!drone.CheckResponses(ref data, false));
+            while (!drone.CheckResponses(ref data));
+            while (!drone.CheckGeofenceResponse(ref data));
 
             await JSRuntime.InvokeVoidAsync("geofenceEditor.setData", data);
             await JSRuntime.InvokeVoidAsync("initGeofenceEditor", null);

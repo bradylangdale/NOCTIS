@@ -16,7 +16,7 @@ namespace WebUI.Data
         private Queue<string> outQueue;
         private Queue<string> inQueue;
         
-        private uint TIMEOUT = 10;
+        private uint TIMEOUT = 15;
 
         private uint LOG_LENGTH = 120;
         private Queue<string> logs;
@@ -27,6 +27,7 @@ namespace WebUI.Data
         private bool droneConnected = false;
 
         private string imagePath = "/icons/stream_default.png";
+        private string mapData = "";
 
         // Drone SOH parameters
         private string soh_connection = "Disconnected";
@@ -132,6 +133,21 @@ namespace WebUI.Data
                 } else {
                     return false;
                 }
+            }
+        }
+
+        public bool CheckGeofenceResponse(ref string response)
+        {
+            if (!running) return false;
+
+            while (mapData == "") Thread.Sleep(100);
+
+            lock (mapData)
+            {
+                response = mapData;
+                logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + "DEBUG: Receive updated geofence.");
+                mapData = "";
+                return true;
             }
         }
 
@@ -332,6 +348,27 @@ namespace WebUI.Data
                                     soh_gps = soh[6];
                                     soh_ultra = soh[7];
                                     soh_vert = soh[8];
+
+                                    client.SendFrame("CheckLogs");
+
+                                    line = "";
+                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out line))
+                                    {
+                                        LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
+                                        Thread.Sleep(500);
+                                        running = false;
+                                        RestartDroneService();
+                                        break;
+                                    }
+                                } else if (line.Contains("GEOFENCE: "))
+                                {
+                                    line = line.Replace("GEOFENCE: ", "");
+
+                                    lock (mapData)
+                                    {
+                                        mapData = line;
+                                    }
 
                                     client.SendFrame("CheckLogs");
 

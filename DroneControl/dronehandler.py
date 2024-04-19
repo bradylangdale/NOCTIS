@@ -38,7 +38,7 @@ import json
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
-SIM = True
+SIM = False
 
 if SIM:
     DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")

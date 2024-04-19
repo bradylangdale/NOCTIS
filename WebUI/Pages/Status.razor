@@ -97,6 +97,7 @@
             if (drone.CheckResponses(ref response, false))
             {
                 nominal = true;
+                drone.LogMessage("Drone Control Service shutdown nominally attempting to restart.", "DEBUG");
                 break;
             }
         }
