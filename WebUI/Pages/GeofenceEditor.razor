@@ -1,6 +1,8 @@
 ﻿@page "/geofenceditor"
 @using WebUI.Data
 
+@using System.Timers
+
 @inject DroneControlService drone
 @inject IJSRuntime JSRuntime
 
@@ -18,7 +20,18 @@
 <div id="map" style="height:calc(100vh - 14rem);width:100%;"></div>
 
 @code{
-    public string response = "";
+    private string response = "";
+    private string lat = "0.0";
+    private string lng = "0.0";
+
+    private Timer timer = new Timer(1000);
+
+    protected override void OnInitialized()
+    {
+        timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
+        timer.AutoReset = true;
+        timer.Start(); 
+    }
 
     public async void SaveGeofence()
     {
@@ -74,5 +87,20 @@
             StateHasChanged();
         }
 
+    }
+
+    private void OnTimerCallback()
+    {
+        _ = InvokeAsync(() =>
+       {    
+            try {
+                drone.GetDronePosition(ref lat, ref lng);
+
+                string pos = "[ " + lat + ", " + lng + " ]";
+                JSRuntime.InvokeVoidAsync("geofenceEditor.setDronePos", pos);
+            } catch (Exception e) {
+                Console.WriteLine(e);
+            }
+        });
     }
 }

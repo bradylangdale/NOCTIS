@@ -14,7 +14,7 @@ import olympe
 import olympe_deps as od
 from olympe.messages.skyctrl.CoPiloting import setPilotingSource
 from olympe.messages.ardrone3.Piloting import TakeOff, Landing
-from olympe.messages.ardrone3.Piloting import moveBy, moveTo
+from olympe.messages.ardrone3.Piloting import moveBy, moveTo, CancelMoveTo
 from olympe.messages.ardrone3.PilotingState import (FlyingStateChanged, 
                                                     AltitudeAboveGroundChanged, 
                                                     PositionChanged,
@@ -25,20 +25,21 @@ from olympe.messages.ardrone3.PilotingSettingsState import MaxTiltChanged
 from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChanged, HomeChanged
 from olympe.messages.common.CommonState import BatteryStateChanged, SensorsStatesListChanged
 from olympe.messages.camera import camera_states
+from olympe.messages.gimbal import attitude
 
 from olympe.enums.common.CommonState import SensorsStatesListChanged_SensorName as Sensor
 from olympe.enums.ardrone3.Piloting import MoveTo_Orientation_mode
-from olympe.messages.thermal import set_mode, set_rendering, mode, rendering
+from olympe.messages.thermal import set_mode, set_rendering, set_palette_settings, mode, rendering
 
 from multiprocessing import Process, Manager
-from ctypes import c_bool
+from ctypes import c_bool, c_uint16
 
 import json
 
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
-SIM = False
+SIM = True
 
 if SIM:
     DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
@@ -81,7 +82,13 @@ class DroneHandler(olympe.EventListener):
 
         self.need_video_restart = False
         self.video_thread = None
+
         self.running = self.manager.Value(c_bool, False)
+        self.object_detect = self.manager.Value(c_bool, False)
+        self.object_detected = self.manager.Value(c_bool, False)
+        self.object_px = self.manager.Value(c_uint16, 0)
+        self.object_py = self.manager.Value(c_uint16, 0)
+
         self.survey_complete = True
         self.geofencemanager = None
         self.zmqmanager = zmqmanager
@@ -171,7 +178,8 @@ class DroneHandler(olympe.EventListener):
         gps = "Healthy"
         ultra = "Healthy"
         vert = "Healthy"
-        state = "Idle"
+        lat = "0"
+        lng = "0"
 
         while self.zmqmanager.running:       
             if self.drone.connection_state() != self.last_connection_state:
@@ -195,6 +203,24 @@ class DroneHandler(olympe.EventListener):
                 self.start(reattempt=True)
 
             if self.drone.connection_state():
+                # check battery level
+                battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
+
+                if battery_level % 25 == 0 or battery_level != last_bat:
+                    if battery_level % 25 == 0:
+                        self.zmqmanager.log('Battery Level at ' + str(battery_level) + '%', level='WARNING')
+
+                    if battery_level != last_bat and battery_level <= 25:
+                        if self.state == DroneState.Idling and self.state != DroneState.Charging:
+                            self.state = DroneState.Charging
+                            Thread(target=self.fly).start()
+                            self.zmqmanager.log('Starting drone charging.', level='LOG')
+                        elif self.state == DroneState.Surveying or self.state == DroneState.Chasing:
+                            self.zmqmanager.log('Battery Level is too low canceling current flight.', level='WARNING')
+                            self.state = DroneState.Error
+                            self.zmqmanager.log('Drone Control requires full restart. Restarting now!', level='WARNING')
+                
+                    last_bat = battery_level
                 
                 if self.state == DroneState.Error:
                     self.zmqmanager.log('Drone Control reset during flight, forcing drone to return home!', level='ERROR')
@@ -212,21 +238,15 @@ class DroneHandler(olympe.EventListener):
                         if self.thermal_state != False:
                             self.zmqmanager.log('Thermal Imaging is disabled.')
                             self.thermal_state = False
+                            self.object_detect.value = False
                     else:
                         if self.thermal_state != True:
                             self.zmqmanager.log('Thermal Imaging is enabled.')
                             self.thermal_state = True
-
-                # check battery level
-                battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
-
-                if battery_level % 25 == 0 and battery_level != last_bat:
-                    self.zmqmanager.log('Battery Level at ' + str(battery_level) + '%', level='WARNING')
-                
-                last_bat = battery_level
+                            self.object_detect.value = True
 
                 # check cameras running
-                if self.drone.get_state(camera_states)["active_cameras"] == 1 or self.thermal_state:
+                if self.drone.get_state(camera_states)["active_cameras"] != 0 or self.thermal_state:
                     cams = "Healthy"
                 elif cams != 'Unhealthy':
                     self.zmqmanager.log("Cameras are reporting UNHEALTHY!", level='ERROR')
@@ -270,12 +290,20 @@ class DroneHandler(olympe.EventListener):
                     self.zmqmanager.log("Vertical Camera is reporting UNHEALTHY!", level='ERROR')
                     vert = "Unhealthy"
 
-                self.zmqmanager.log(f'Connected,{battery_level},{cams},{imu},{mag},{baro},{gps},{ultra},{vert}', level='SOH')
+                if self.state in [DroneState.Charging, DroneState.Idling, DroneState.Repositioning]:
+                    position = self.drone.get_state(HomeChanged)
+                    lat = position['latitude']
+                    lng = position['longitude']
+                elif self.state != DroneState.Error:
+                    position = self.drone.get_state(PositionChanged)
+                    lat = position['latitude']
+                    lng = position['longitude']
+
+                self.zmqmanager.log(f'Connected,{battery_level},{cams},{imu},{mag},{baro},{gps},{ultra},{vert},{lat},{lng}', level='SOH')
             else:
-                self.zmqmanager.log(f'Disconnected,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A', level='SOH')
+                self.zmqmanager.log(f'Disconnected,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A', level='SOH')
 
             
-
             time.sleep(1)
 
     def set_geo(self, geo):
@@ -301,6 +329,23 @@ class DroneHandler(olympe.EventListener):
                     if ret == False:
                         pass
                     else:
+                        if self.object_detect.value:
+                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                            # apply a Gaussian blur to the image then find the brightest
+                            # region
+                            gray = cv2.GaussianBlur(gray, (41, 41), 0)
+                            (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(gray)
+
+                            if maxVal > 150.0:
+                                cv2.circle(frame, maxLoc, 41, (255, 255, 255), 2)
+                                #print(maxVal)
+                                self.object_detected.value = True
+                                self.object_px.value = maxLoc[0]
+                                self.object_py.value = maxLoc[1]
+                            else:
+                                self.object_detected.value = False
+                        
                         if len(self.shared_frames) > 0:
                             self.shared_frames[0] = frame
                         else:
@@ -324,12 +369,21 @@ class DroneHandler(olympe.EventListener):
             self.drone(set_mode(mode="blended")).wait().success()
 
             self.zmqmanager.log('Setting thermal mode to blended.')
-            self.drone(set_rendering(mode="blended", blending_rate=0.9)).wait().success()
+            self.drone(set_rendering(mode="thermal", blending_rate=1)).wait().success()
+
+            self.zmqmanager.log('Setting thermal palette to spot above threshold.')
+            self.drone(set_palette_settings(mode="spot", 
+                                     lowest_temp=305.372,
+                                     highest_temp=316.483,
+                                     outside_colorization="limited",
+                                     relative_range="locked",
+                                     spot_type="hot",
+                                     spot_threshold=0.6)).wait().success()
         else:
             self.zmqmanager.log('Setting thermal mode to disabled.')
             self.drone(set_mode(mode="disabled")).wait().success()
             
-            self.zmqmanager.log('Setting thermal mode to visible.')
+            self.zmqmanager.log('Setting rendering mode to visible.')
             self.drone(set_rendering(mode="visible", blending_rate=0)).wait().success()
 
     def fly(self):
@@ -359,7 +413,7 @@ class DroneHandler(olympe.EventListener):
     def takingoff(self):
         # check battery level
         battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
-        if battery_level < 90:
+        if battery_level < 25:
             self.state = DroneState.Charging
             self.zmqmanager.log('Drone needs to charge.', level='WARNING')
             return
@@ -441,25 +495,95 @@ class DroneHandler(olympe.EventListener):
         self.zmqmanager.log('Drone is generating a surveillance path.')
         survey_path = self.geofencemanager.get_survey_path([self.start_lat, self.start_lng])
         self.zmqmanager.log('Drone has a survey path.', level='SUCCESS')
-
-        #self.waypoints = survey_path
-
-        #self.path_complete = False
-        #while not self.path_complete:
-        #    time.sleep(1)
         
         i = 1
         for p in survey_path:
             self.zmqmanager.log(f'Moving to survey waypoint {i} of {len(survey_path)}.')
-            self.drone(
+            flying = self.drone(
                 moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
-                ).wait().success()
+                )
+            
+            while not flying.success():
+                if self.object_detected.value:
+                    self.zmqmanager.log('Target detected!', level='LOG')
+                    target_lat, target_lng = self.get_target_gps()
+
+                    if self.geofencemanager.check_in_bounds([target_lat, target_lng]):
+                        self.zmqmanager.log('Pursuing target!', level='LOG')
+                        self.drone(CancelMoveTo()).wait().success()
+                        self.state = DroneState.Chasing
+                        return
+                    else:
+                        self.zmqmanager.log('Target out of bounds!', level='LOG')
+
             self.zmqmanager.log(f'Reached survey waypoint {i} of {len(survey_path)}!')
             i += 1
 
         self.zmqmanager.log('Drone has completed surveillance, no targets found.', level='SUCCESS')
 
+        self.state = DroneState.Returning
+
+    def get_target_gps(self):
+        w = 320
+        h = 256
+        deg_pix = 0.15625   # 50 degrees HFOV 320 pixels
+
+        px = self.object_px.value
+        py = self.object_py.value
+
+        rel_pitch = deg_pix * (px - (w / 2))
+        rel_yaw = deg_pix * ((h - py) - (h / 2))
+
+        gimbal_vec = self.drone.get_state(attitude)[0]
+
+        target_pitch = gimbal_vec['pitch_absolute'] + rel_pitch
+        target_yaw = gimbal_vec['yaw_absolute'] + rel_yaw
+
+        position = self.drone.get_state(PositionChanged)
+
+        length = position['altitude'] / math.tan(math.radians(target_pitch))
+
+        return [position['latitude'] + (length * math.sin(math.radians(target_yaw))),
+                position['longitude'] + (length * math.cos(math.radians(target_pitch)))]
+
+    def chasing(self):
+        updating = False
+        while True:
+            position = self.drone.get_state(PositionChanged)
+            target_lat, target_lng = self.get_target_gps()
+            target_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
+                                                        [target_lat, target_lng])
+
+            i = 1
+            for p in target_path:
+                self.zmqmanager.log(f'Moving to target waypoint {i} of {len(target_path)}.')
+                flying = self.drone(
+                    moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
+                    >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+                    )
+                
+                if self.object_detected.value:
+                    self.zmqmanager.log('Target detected!', level='LOG')
+                    target_lat, target_lng = self.get_target_gps()
+
+                    if self.geofencemanager.check_in_bounds([target_lat, target_lng]):
+                        self.zmqmanager.log('Updating target', level='LOG')
+                        self.drone(CancelMoveTo()).wait().success()
+                        updating = True
+                        break
+                    else:
+                        self.zmqmanager.log('Target is out of bounds. Returning home.', level='LOG')
+                        self.state = DroneState.Returning
+                        return
+
+                self.zmqmanager.log(f'Reached target waypoint {i} of {len(target_path)}!')
+                i += 1
+
+            if not updating:
+                break
+
+        self.zmqmanager.log('Reached targets last known location without updates returning home.', level='LOG')
         self.state = DroneState.Returning
 
     def returning(self):
@@ -488,4 +612,7 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone has successfully landed.', level='SUCCESS')
 
+        self.state = DroneState.Idling
+
+    def charging(self):
         self.state = DroneState.Idling

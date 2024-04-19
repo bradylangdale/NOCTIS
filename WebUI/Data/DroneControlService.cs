@@ -39,6 +39,8 @@ namespace WebUI.Data
         private string soh_gps = "N/A";
         private string soh_ultra = "N/A";
         private string soh_vert = "N/A";
+        private string soh_lat = "N/A";
+        private string soh_lng = "N/A";
 
         public DroneControlService()
         {
@@ -169,8 +171,8 @@ namespace WebUI.Data
         }
 
         public void GetSOH(ref string con, ref string bat, ref string cam,
-            ref string imu, ref string mag, ref string baro,
-            ref string gps, ref string ultra, ref string vert)
+            ref string imu, ref string mag, ref string baro, ref string gps,
+            ref string ultra, ref string vert, ref string lat, ref string lng)
         {
             con = soh_connection;
             bat = soh_battery;
@@ -181,6 +183,14 @@ namespace WebUI.Data
             gps = soh_gps;
             ultra = soh_ultra;
             vert = soh_vert;
+            lat = soh_lat;
+            lng = soh_lng;
+        }
+
+        public void GetDronePosition(ref string lat, ref string lng)
+        {
+            lat = soh_lat;
+            lng = soh_lng;
         }
 
         public void RestartDroneService()
@@ -348,6 +358,8 @@ namespace WebUI.Data
                                     soh_gps = soh[6];
                                     soh_ultra = soh[7];
                                     soh_vert = soh[8];
+                                    soh_lat = soh[9];
+                                    soh_lng = soh[10];
 
                                     client.SendFrame("CheckLogs");
 
@@ -486,7 +498,7 @@ namespace WebUI.Data
             thread.Start();
         }
 
-        private static void RunCommandWithBash(string command)
+        public void RunCommandWithBash(string command)
         {
             Process.Start("/bin/bash", $"-c \"{command}\"");
         }   

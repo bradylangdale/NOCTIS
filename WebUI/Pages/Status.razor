@@ -30,6 +30,8 @@
 <div><label>@("GPS - " + gps)</label></div>
 <div><label>@("Ultrasonic - " + ultra)</label></div>
 <div><label>@("Vertical Camera - " + vert)</label></div>
+<div><label>@("Latitude - " + lat)</label></div>
+<div><label>@("Longitude - " + lng)</label></div>
 
 @code {
     public string imagePath = "N/A"; 
@@ -45,6 +47,8 @@
     private string gps = "N/A"; 
     private string ultra = "N/A"; 
     private string vert = "N/A"; 
+    private string lat = "N/A";
+    private string lng = "N/A";
 
     protected override void OnInitialized()
     {
@@ -87,26 +91,8 @@
         drone.StreamState(false);
         drone.SendCommand("Terminate");
 
-        response = "Off nominal WebUI is forcing restart.";
-
-        bool nominal = false;
-        for (int i = 0; i < 20; i++)
-        {
-            Thread.Sleep(100);
-
-            if (drone.CheckResponses(ref response, false))
-            {
-                nominal = true;
-                drone.LogMessage("Drone Control Service shutdown nominally attempting to restart.", "DEBUG");
-                break;
-            }
-        }
-
-        if (!nominal)
-        {
-            drone.LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
-            drone.RestartDroneService();
-        }
+        drone.LogMessage("Restarting Drone Control Service!", "LOG");
+        drone.RunCommandWithBash("killall -9 python3");
 
         StateHasChanged();
     }
@@ -126,7 +112,8 @@
        {    
             try {
                 drone.GetSOH(ref connection, ref battery, ref cams,
-                    ref imu, ref mag, ref baro, ref gps, ref ultra, ref vert);
+                    ref imu, ref mag, ref baro, ref gps,
+                    ref ultra, ref vert, ref lat, ref lng);
                 StateHasChanged();
             } catch (Exception e) {
                 Console.WriteLine(e);
