@@ -15,6 +15,8 @@ namespace WebUI.Data
         private bool running = true;
         private Queue<string> outQueue;
         private Queue<string> inQueue;
+        
+        private uint TIMEOUT = 10;
 
         private uint LOG_LENGTH = 120;
         private Queue<string> logs;
@@ -177,7 +179,7 @@ namespace WebUI.Data
                 }
 
                 running = true;
-                droneConnected = false;
+                StreamState(false);
 
                 outQueue = new Queue<string>();
                 inQueue = new Queue<string>();
@@ -210,7 +212,7 @@ namespace WebUI.Data
             thread = new Thread(() =>
             {
                 RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
-                Thread.Sleep(250);
+                Thread.Sleep(1000);
                 using (var client = new RequestSocket())
                 {   
                     int display_num = 0;
@@ -227,9 +229,10 @@ namespace WebUI.Data
                                     client.SendFrame(outQueue.Dequeue());
                                     
                                     string? message = "";
-                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(30), out message))
+                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out message))
                                     {
                                         LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
                                         Thread.Sleep(500);
                                         running = false;
                                         RestartDroneService();
@@ -244,6 +247,7 @@ namespace WebUI.Data
 
                                     if (message == "Successful Shutdown Drone Control.")
                                     {
+                                        StreamState(false);
                                         Thread.Sleep(500);
                                         running = false;
                                         RestartDroneService();
@@ -259,9 +263,10 @@ namespace WebUI.Data
                             client.SendFrame("CheckLogs");
 
                             string? line = "";
-                            if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(30), out line))
+                            if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out line))
                             {
                                 LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                StreamState(false);
                                 Thread.Sleep(500);
                                 running = false;
                                 RestartDroneService();
@@ -282,9 +287,10 @@ namespace WebUI.Data
                                     client.SendFrame("CheckLogs");
 
                                     line = "";
-                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(30), out line))
+                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out line))
                                     {
                                         LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
                                         Thread.Sleep(500);
                                         running = false;
                                         RestartDroneService();
@@ -302,9 +308,10 @@ namespace WebUI.Data
                                     client.SendFrame("CheckLogs");
 
                                     line = "";
-                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(30), out line))
+                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out line))
                                     {
                                         LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
                                         Thread.Sleep(500);
                                         running = false;
                                         RestartDroneService();
@@ -329,9 +336,10 @@ namespace WebUI.Data
                                     client.SendFrame("CheckLogs");
 
                                     line = "";
-                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(30), out line))
+                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out line))
                                     {
                                         LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
                                         Thread.Sleep(500);
                                         running = false;
                                         RestartDroneService();
@@ -362,9 +370,10 @@ namespace WebUI.Data
                                     client.SendFrame("CheckLogs");
 
                                     line = "";
-                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(30), out line))
+                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out line))
                                     {
                                         LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
                                         Thread.Sleep(500);
                                         running = false;
                                         RestartDroneService();
@@ -383,9 +392,10 @@ namespace WebUI.Data
                                 str_count = (str_count == "") ? "0" : str_count;
 
                                 string? frame = "";
-                                if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(30), out frame))
+                                if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out frame))
                                 {
                                     LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                    StreamState(false);
                                     Thread.Sleep(500);
                                     running = false;
                                     RestartDroneService();

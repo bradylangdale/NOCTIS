@@ -84,7 +84,7 @@ class ZMQManager:
                 # TODO: rename this to SetGeofence
                 socket.send_string('ECHO: Geofence')
 
-                Thread(target=self.geofencemanager.update_geo_nav_data, args=(message[10:])).start()
+                Thread(target=self.geofencemanager.update_geo_nav_data, args=(message[10:],)).start()
                 self.log('Geofence saving.')
 
             elif message == 'GetGeofence':
