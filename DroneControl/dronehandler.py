@@ -593,7 +593,7 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone has generated a return home path.', level='SUCCESS')
 
-        i = 0
+        i = 1
         for p in return_path:
             self.zmqmanager.log(f'Moving to return path waypoint {i} of {len(return_path)}.')
             self.drone(
