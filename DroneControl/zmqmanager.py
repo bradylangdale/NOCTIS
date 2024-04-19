@@ -137,6 +137,14 @@ class ZMQManager:
                 time.sleep(0.25)
 
                 socket.send_string('Successful Shutdown Drone Control.')
+            elif message == "Thermal":
+                
+                socket.send_string('ECHO: Thermal')
+                self.drone.toggle_thermal()
+
+                self.log('Thermal Settings Set!', level='DEBUG')
+
+                self.log('Drone Control requires full restart. Restarting now!', level='WARNING')
 
             else:
                 socket.send_string('ECHO: ' + message)
@@ -147,4 +155,4 @@ class ZMQManager:
         socket.close()
 
     def log(self, msg, level='LOG'):
-        self.messages.append(level + ': ' + msg)
+        self.messages.append(level + ': ' + str(msg))

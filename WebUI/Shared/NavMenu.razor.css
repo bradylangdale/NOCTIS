@@ -1,3 +1,10 @@
+.roboto-condensed-navbar {
+  font-family: "Roboto Condensed", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+}
+
 .navbar-toggler {
     background-color: rgba(255, 255, 255, 0.1);
 }
@@ -8,7 +15,10 @@
 }
 
 .navbar-brand {
-    font-size: 1.1rem;
+    font-family: "Roboto Condensed", monospace;
+    font-size: 1.4rem;
+    color: #c4a454;
+    font-weight: bold;
 }
 
 .oi {
@@ -21,6 +31,7 @@
 .nav-item {
     font-size: 0.9rem;
     padding-bottom: 0.5rem;
+    color: #c3a65d;
 }
 
     .nav-item:first-of-type {
@@ -32,7 +43,7 @@
     }
 
     .nav-item ::deep a {
-        color: #d7d7d7;
+        color: #e2cd99;
         border-radius: 4px;
         height: 3rem;
         display: flex;
@@ -42,12 +53,12 @@
 
 .nav-item ::deep a.active {
     background-color: rgba(255,255,255,0.25);
-    color: white;
+    color: #e2cd99;
 }
 
 .nav-item ::deep a:hover {
     background-color: rgba(255,255,255,0.1);
-    color: white;
+    color: #e2cd99;
 }
 
 @media (min-width: 641px) {

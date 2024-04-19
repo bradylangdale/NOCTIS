@@ -28,6 +28,8 @@ from olympe.messages.camera import camera_states
 
 from olympe.enums.common.CommonState import SensorsStatesListChanged_SensorName as Sensor
 from olympe.enums.ardrone3.Piloting import MoveTo_Orientation_mode
+from olympe.messages.thermal import set_mode, set_rendering, mode, rendering
+
 from multiprocessing import Process, Manager
 from ctypes import c_bool
 
@@ -87,6 +89,8 @@ class DroneHandler(olympe.EventListener):
         self.path_complete = False
         self.waypoints = []
         self.current_i = 0
+
+        self.thermal_state = None
 
         self.last_connection_state = False
         Thread(target=self.heartbeat).start()
@@ -151,7 +155,7 @@ class DroneHandler(olympe.EventListener):
                     self.zmqmanager.log('Drone connection successful!', level='SUCCESS')
 
                     if self.need_video_restart:
-                        self.zmqmanager.log('Drone Control requires full restart due drone connection loss. Restarting now.', level='WARNING')
+                        self.zmqmanager.log('Drone Control requires full restart. Restarting now!', level='WARNING')
 
                         self.need_video_restart = False
                 else:
@@ -166,6 +170,16 @@ class DroneHandler(olympe.EventListener):
                 self.start(reattempt=True)
 
             if self.drone.connection_state():
+                if str(self.drone.get_state(mode)["mode"]) == "mode.disabled" or \
+                   str(self.drone.get_state(rendering)["mode"]) == "rendering_mode.visible":
+                    if self.thermal_state != False:
+                        self.zmqmanager.log('Thermal Imaging is disabled.')
+                        self.thermal_state = False
+                else:
+                    if self.thermal_state != True:
+                        self.zmqmanager.log('Thermal Imaging is enabled.')
+                        self.thermal_state = True
+
                 # check battery level
                 battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
 
@@ -223,6 +237,8 @@ class DroneHandler(olympe.EventListener):
             else:
                 self.zmqmanager.log(f'Disconnected,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A', level='SOH')
 
+            
+
             time.sleep(1)
 
     def set_geo(self, geo):
@@ -264,6 +280,20 @@ class DroneHandler(olympe.EventListener):
     #def onAltitudeAboveGroundChanged(self, event, scheduler):
     #    # TODO: adjust next target to ensure that the drone isn't too close to the ground
     #    pass
+    
+    def toggle_thermal(self):
+        if not self.thermal_state:
+            self.zmqmanager.log('Setting thermal mode to blended.')
+            self.drone(set_mode(mode="blended")).wait().success()
+
+            self.zmqmanager.log('Setting thermal mode to blended.')
+            self.drone(set_rendering(mode="blended", blending_rate=0.9)).wait().success()
+        else:
+            self.zmqmanager.log('Setting thermal mode to disabled.')
+            self.drone(set_mode(mode="disabled")).wait().success()
+            
+            self.zmqmanager.log('Setting thermal mode to visible.')
+            self.drone(set_rendering(mode="visible", blending_rate=0)).wait().success()
 
     def fly(self):
         self.survey_complete = False

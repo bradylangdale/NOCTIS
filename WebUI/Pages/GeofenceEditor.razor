@@ -15,7 +15,7 @@
 <button @onclick="GenerateSurvey">Generate Survey</button>
 <button @onclick="ClearMarkers">Clear Markers</button>
 </p>
-<div id="map" style="height:640px;width:100%;"></div>
+<div id="map" style="height:calc(100vh - 14rem);width:100%;"></div>
 
 @code{
     public string response = "";

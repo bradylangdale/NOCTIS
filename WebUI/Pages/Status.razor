@@ -15,7 +15,8 @@
 <button @onclick="Connect">Connect</button>
 <button @onclick="Disconnect">Disconnect</button>
 <button @onclick="Survey">Survey</button>
-<button @onclick="Restart">Restart</button>
+<button @onclick="Restart">Restart DCS</button>
+<button @onclick="Thermal">Toggle Thermal</button>
 </p>
 <p><label>@("DCS Response: " + response)</label></p>
 
@@ -87,6 +88,15 @@
         drone.SendCommand("Terminate");
 
         while(!drone.CheckResponses(ref response, false));
+
+        StateHasChanged();
+    }
+
+    public void Thermal()
+    {
+        drone.SendCommand("Thermal");
+
+        while (!drone.CheckResponses(ref response));
 
         StateHasChanged();
     }

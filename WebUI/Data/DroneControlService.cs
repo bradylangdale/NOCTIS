@@ -307,7 +307,7 @@ namespace WebUI.Data
 
                                     logs.Enqueue(System.DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss: ") + line);
 
-                                    if (line.Contains("Drone Control requires full restart due drone connection loss. Restarting now."))
+                                    if (line.Contains("Drone Control requires full restart. Restarting now!"))
                                     {
                                         RestartDroneService();
                                         break;

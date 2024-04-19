@@ -97,7 +97,7 @@ a, .btn-link {
 
 .logger {
     width: 100%;
-    height: 75vh;
+    height: calc(100vh - 8.5rem);
     position: inherit;
     box-sizing: border-box;
     background-color: black;
