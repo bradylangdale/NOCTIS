@@ -6,6 +6,7 @@ import json
 import numpy as np
 import cv2
 import time
+from dronehandler import DroneState
 
 JPG_QUALITY = [int(cv2.IMWRITE_JPEG_QUALITY), 20]
 
@@ -40,18 +41,17 @@ class ZMQManager:
                 socket.send_string('ECHO: Survey')
 
                 self.log('Stopping Olympe Drone connection.')
-                if self.drone.stop():
-                    self.log('Olympe Drone connection restarting.')
-                    self.drone.start()
+                Thread(target=self.drone.stop).start()
 
-                    # TODO: improve this, right now this isn't guarenteed
-                    self.log('Olympe Drone connection reestablished.')
-                    self.log('This message is not reliable. Verify that the live feed is active.', level='WARNING')
+                self.log('Olympe Drone connection restarting.')
+                self.drone.start()
 
-                    Thread(target=self.drone.fly).start()
-                    self.log('Starting Automated Survey.')
-                else:
-                    self.log('Failed to disconnect was a drone connected?', level='ERROR')
+                # TODO: improve this, right now this isn't guarenteed
+                self.log('Olympe Drone connection reestablished.')
+
+                self.drone.state = DroneState.TakingOff
+                Thread(target=self.drone.fly).start()
+                self.log('Starting Automated Survey.')
 
             elif message == 'GetCurrentFrame':
                 

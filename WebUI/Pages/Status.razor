@@ -87,7 +87,25 @@
         drone.StreamState(false);
         drone.SendCommand("Terminate");
 
-        while(!drone.CheckResponses(ref response, false));
+        response = "Off nominal WebUI is forcing restart.";
+
+        bool nominal = false;
+        for (int i = 0; i < 20; i++)
+        {
+            Thread.Sleep(100);
+
+            if (drone.CheckResponses(ref response, false))
+            {
+                nominal = true;
+                break;
+            }
+        }
+
+        if (!nominal)
+        {
+            drone.LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+            drone.RestartDroneService();
+        }
 
         StateHasChanged();
     }
