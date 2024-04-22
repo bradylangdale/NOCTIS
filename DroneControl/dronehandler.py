@@ -39,7 +39,7 @@ import json
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
-SIM = True
+SIM = False
 
 if SIM:
     DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
@@ -59,6 +59,13 @@ class DroneState(IntEnum):
     Repositioning = 6
     Charging = 7
     Error = 8
+
+
+class CameraMode(IntEnum):
+    Visible = 0
+    Thermal = 1
+    VisibleDetect = 2
+    ThermalDetect = 3
 
 
 class DroneHandler(olympe.EventListener):
@@ -88,6 +95,7 @@ class DroneHandler(olympe.EventListener):
         self.object_detected = self.manager.Value(c_bool, False)
         self.object_px = self.manager.Value(c_uint16, 0)
         self.object_py = self.manager.Value(c_uint16, 0)
+        self.camera_mode = self.manager.Value(c_uint16, 0)
 
         self.survey_complete = True
         self.geofencemanager = None
@@ -111,8 +119,12 @@ class DroneHandler(olympe.EventListener):
                 self.nonvolatile = json.load(f)
 
             self.state = DroneState(self.nonvolatile['state'])
-            self.start_lat = self.nonvolatile['home'][0]
-            self.start_lng = self.nonvolatile['home'][1]
+
+            try:
+                self.start_lat = self.nonvolatile['home'][0]
+                self.start_lng = self.nonvolatile['home'][1]
+            except:
+                self.zmqmanager.log('No home position found in the dcs.json', level='WARNING')
             
             self.zmqmanager.log('Successfully loaded dcs.json', level='SUCCESS')
         except:
@@ -238,12 +250,20 @@ class DroneHandler(olympe.EventListener):
                         if self.thermal_state != False:
                             self.zmqmanager.log('Thermal Imaging is disabled.')
                             self.thermal_state = False
-                            self.object_detect.value = False
+                            #self.object_detect.value = False
+                            if self.camera_mode.value == int(CameraMode.ThermalDetect):
+                                self.camera_mode.value = int(CameraMode.VisibleDetect)
+                            else:
+                                self.camera_mode.value = int(CameraMode.Visible)
                     else:
                         if self.thermal_state != True:
                             self.zmqmanager.log('Thermal Imaging is enabled.')
                             self.thermal_state = True
-                            self.object_detect.value = True
+                            #self.object_detect.value = True
+                            if self.camera_mode.value == int(CameraMode.VisibleDetect):
+                                self.camera_mode.value = int(CameraMode.ThermalDetect)
+                            else:
+                                self.camera_mode.value = int(CameraMode.Thermal)
 
                 # check cameras running
                 if self.drone.get_state(camera_states)["active_cameras"] != 0 or self.thermal_state:
@@ -312,51 +332,152 @@ class DroneHandler(olympe.EventListener):
     def frame_processing(self):
 
         WEBCAM_RAW_RES = (1280, 720)
-        FRAMERATE = 24
+        FRAMERATE = 30
         vcap = cv2.VideoCapture(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live')
         vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
         vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
         vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
         vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
+        # # Load the YOLOv8 model
+        from ultralytics import YOLO
+        from onnxruntime.quantization import quantize_dynamic, QuantType
+
+        pt_model = YOLO('yolov5nu.pt')
+
+        # Export the model to ONNX format
+        pt_model.export(format='onnx', imgsz=288, optimize=True, int8=True, simplify=True)
+
+        # # Load the exported ONNX model
+        model = YOLO('yolov5nu.onnx')
+        # #onnx_model_path = 'yolov8n.onnx'
+
+        # # Specify the name of the output node to be quantized
+        # #model_output = 'output0'
+
+        # # Quantize the model directly from the file path
+        # #quantized_model_path = 'quantized_model.onnx'
+        # #quantize_dynamic(model_input=onnx_model_path, 
+        # #               model_output=quantized_model_path, 
+        # #               per_channel=False,  # Adjust as needed
+        # #               weight_type=QuantType.QUInt8)
+
+        # #q_model = YOLO(quantized_model_path)
+
+        # results = model(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live', stream=True, imgsz=320)
+
         # capture every third frame
         count = 0
+        last_mode = 0
         while self.running.value:
-            
-            if count == 2:
-                try:
-                    ret, frame = vcap.read()
-                    if ret == False:
-                        pass
-                    else:
-                        if self.object_detect.value:
-                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-                            # apply a Gaussian blur to the image then find the brightest
-                            # region
-                            gray = cv2.GaussianBlur(gray, (41, 41), 0)
-                            (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(gray)
-
-                            if maxVal > 150.0:
-                                cv2.circle(frame, maxLoc, 41, (255, 255, 255), 2)
-                                #print(maxVal)
-                                self.object_detected.value = True
-                                self.object_px.value = maxLoc[0]
-                                self.object_py.value = maxLoc[1]
-                            else:
-                                self.object_detected.value = False
-                        
-                        if len(self.shared_frames) > 0:
-                            self.shared_frames[0] = frame
-                        else:
-                            self.shared_frames.append(frame)
-                except Exception as e:
-                    print(e)
-
-                count = 0
-            else:
+            if last_mode != CameraMode(self.camera_mode.value):
+                vcap.release()
+                vcap = cv2.VideoCapture(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live')
+                vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
+                vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
+                vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
+                vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
                 vcap.grab()
-                count += 1
+
+                if CameraMode(self.camera_mode.value) == CameraMode.VisibleDetect:
+                    # Export the model to ONNX format
+                    pt_model.export(format='onnx', imgsz=256, optimize=True, int8=True, simplify=True)
+
+                    # # Load the exported ONNX model
+                    model = YOLO('yolov5nu.onnx')
+
+                if CameraMode(self.camera_mode.value) == CameraMode.ThermalDetect:
+                    # Export the model to ONNX format
+                    pt_model.export(format='onnx', imgsz=288, optimize=True, int8=True, simplify=True)
+
+                    # # Load the exported ONNX model
+                    model = YOLO('yolov5nu.onnx')
+
+            last_mode = CameraMode(self.camera_mode.value)
+
+            try:
+                if last_mode == CameraMode.Visible:
+                    if count > 15:
+                        ret, frame = vcap.read()
+                        if ret == False:
+                            vcap.grab()
+                        else:
+                            if len(self.shared_frames) > 0:
+                                self.shared_frames[0] = frame
+                            else:
+                                self.shared_frames.append(frame)
+
+                        count = 0
+                    else:
+                        count += 1
+                elif last_mode == CameraMode.Thermal:
+                    if count > 2:
+                        ret, frame = vcap.read()
+                        if ret == False:
+                            vcap.grab()
+                        else:
+                            x1 = 240
+                            y1 = 30
+                            x2 = 1020
+                            y2 = 640
+
+                            frame = frame[y1:y2, x1:x2]
+                            if len(self.shared_frames) > 0:
+                                self.shared_frames[0] = frame
+                            else:
+                                self.shared_frames.append(frame)
+
+                        count = 0
+                    else:
+                        count += 1
+                elif last_mode == CameraMode.VisibleDetect:
+                    if count > 30:
+                        ret, frame = vcap.read()
+                        if ret == False:
+                            vcap.grab()
+                        else:
+                            frame = model.predict(source=frame, imgsz=256)[0].plot()
+                            
+                            if len(self.shared_frames) > 0:
+                                self.shared_frames[0] = frame
+                            else:
+                                self.shared_frames.append(frame)    
+
+                        count = 0
+                    else:
+                        count += 1  
+                elif last_mode == CameraMode.ThermalDetect:
+                    if count > 3:
+                        ret, frame = vcap.read()
+                        if ret == False:
+                            vcap.grab()
+                        else:
+                            x1 = 240
+                            y1 = 30
+                            x2 = 1020
+                            y2 = 640
+                            frame = model.predict(source=frame[y1:y2, x1:x2], imgsz=288)[0].plot()
+                            
+                            if len(self.shared_frames) > 0:
+                                self.shared_frames[0] = frame
+                            else:
+                                self.shared_frames.append(frame)    
+
+                        count = 0
+                    else:
+                        count += 1       
+            except Exception as e:
+                print(e)
+                vcap.release()
+                vcap = cv2.VideoCapture(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live')
+                vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
+                vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
+                vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
+                vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+                vcap.grab()
+
+            vcap.grab()
+            count += 1 
 
     #@olympe.listen_event(AltitudeAboveGroundChanged(_policy='wait'))
     #def onAltitudeAboveGroundChanged(self, event, scheduler):
@@ -372,19 +493,31 @@ class DroneHandler(olympe.EventListener):
             self.drone(set_rendering(mode="thermal", blending_rate=1)).wait().success()
 
             self.zmqmanager.log('Setting thermal palette to spot above threshold.')
-            self.drone(set_palette_settings(mode="spot", 
-                                     lowest_temp=305.372,
-                                     highest_temp=316.483,
+            self.drone(set_palette_settings(mode="relative", 
+                                     lowest_temp=0,
+                                     highest_temp=1000,
                                      outside_colorization="limited",
-                                     relative_range="locked",
+                                     relative_range="unlocked",
                                      spot_type="hot",
-                                     spot_threshold=0.6)).wait().success()
+                                     spot_threshold=0.5)).wait().success()
         else:
             self.zmqmanager.log('Setting thermal mode to disabled.')
             self.drone(set_mode(mode="disabled")).wait().success()
             
             self.zmqmanager.log('Setting rendering mode to visible.')
             self.drone(set_rendering(mode="visible", blending_rate=0)).wait().success()
+
+    def toggle_detection(self):
+        mode = CameraMode(self.camera_mode.value)
+
+        if mode == CameraMode.Visible:
+            self.camera_mode.value = int(CameraMode.VisibleDetect)
+        elif mode == CameraMode.VisibleDetect:
+            self.camera_mode.value = int(CameraMode.Visible)
+        elif mode == CameraMode.Thermal:
+            self.camera_mode.value = int(CameraMode.ThermalDetect)
+        elif mode == CameraMode.ThermalDetect:
+            self.camera_mode.value = int(CameraMode.Thermal)
 
     def fly(self):
         self.survey_complete = False

@@ -40,10 +40,10 @@ class ZMQManager:
 
                 socket.send_string('ECHO: Survey')
 
-                self.log('Stopping Olympe Drone connection.')
-                Thread(target=self.drone.stop).start()
+                #self.log('Stopping Olympe Drone connection.')
+                #Thread(target=self.drone.stop).start()
 
-                self.log('Olympe Drone connection restarting.')
+                #self.log('Olympe Drone connection restarting.')
                 self.drone.start()
 
                 # TODO: improve this, right now this isn't guarenteed
@@ -144,8 +144,15 @@ class ZMQManager:
 
                 self.log('Thermal Settings Set!', level='DEBUG')
 
-                self.log('Drone Control requires full restart. Restarting now!', level='WARNING')
+                #self.log('Drone Control requires full restart. Restarting now!', level='WARNING')
+            
+            elif message == "Detection":
 
+                socket.send_string('ECHO: Detection')
+                self.drone.toggle_detection()
+
+                self.log('Object Detection Toggled!', level='DEBUG')
+                
             else:
                 socket.send_string('ECHO: ' + message)
                 self.log('Received Unknown Message: ' + message, level='ERROR')
