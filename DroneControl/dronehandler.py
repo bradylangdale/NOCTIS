@@ -92,7 +92,6 @@ class DroneHandler(olympe.EventListener):
         self.video_thread = None
 
         self.running = self.manager.Value(c_bool, False)
-        self.object_detect = self.manager.Value(c_bool, False)
         self.object_detected = self.manager.Value(c_bool, False)
         self.object_px = self.manager.Value(c_uint16, 0)
         self.object_py = self.manager.Value(c_uint16, 0)
@@ -251,7 +250,7 @@ class DroneHandler(olympe.EventListener):
                         if self.thermal_state != False:
                             self.zmqmanager.log('Thermal Imaging is disabled.')
                             self.thermal_state = False
-                            #self.object_detect.value = False
+
                             if self.camera_mode.value == int(CameraMode.ThermalDetect):
                                 self.camera_mode.value = int(CameraMode.VisibleDetect)
                             else:
@@ -260,7 +259,7 @@ class DroneHandler(olympe.EventListener):
                         if self.thermal_state != True:
                             self.zmqmanager.log('Thermal Imaging is enabled.')
                             self.thermal_state = True
-                            #self.object_detect.value = True
+
                             if self.camera_mode.value == int(CameraMode.VisibleDetect):
                                 self.camera_mode.value = int(CameraMode.ThermalDetect)
                             else:
@@ -415,6 +414,15 @@ class DroneHandler(olympe.EventListener):
                             vcap.grab()
                         else:
                             frame = visible_model.predict(source=frame, imgsz=224)[0].plot()
+
+                            if len(results[0].boxes) > 0:
+                                target = results[0].boxes[0]
+                                self.object_detected.value = True
+
+                                self.object_px.value = (target.xyxy[0] + target.xyxy[2]) / 2
+                                self.object_py.value = (target.xyxy[1] + target.xyxy[3]) / 2
+                            else:
+                                self.object_detected.value = False
                             
                             if len(self.shared_frames) > 0:
                                 self.shared_frames[0] = frame
@@ -435,12 +443,21 @@ class DroneHandler(olympe.EventListener):
                             y1 = 30
                             x2 = 1020
                             y2 = 640
-                            frame = thermal_model.predict(source=frame[y1:y2, x1:x2], imgsz=288)[0].plot()
+                            results = thermal_model.predict(source=frame[y1:y2, x1:x2], imgsz=288)
+
+                            if len(results[0].boxes) > 0:
+                                target = results[0].boxes[0]
+                                self.object_detected.value = True
+
+                                self.object_px.value = (target.xyxy[0] + target.xyxy[2]) / 2
+                                self.object_py.value = (target.xyxy[1] + target.xyxy[3]) / 2
+                            else:
+                                self.object_detected.value = False
                             
                             if len(self.shared_frames) > 0:
-                                self.shared_frames[0] = frame
+                                self.shared_frames[0] = results[0].plot()
                             else:
-                                self.shared_frames.append(frame)    
+                                self.shared_frames.append(results[0].plot())    
 
                         count = 0
                     else:
@@ -630,9 +647,9 @@ class DroneHandler(olympe.EventListener):
         self.state = DroneState.Returning
 
     def get_target_gps(self):
-        w = 320
-        h = 256
-        deg_pix = 0.15625   # 50 degrees HFOV 320 pixels
+        w = 780
+        h = 610
+        deg_pix = 0.064102564   # 50 degrees HFOV 780 pixels
 
         px = self.object_px.value
         py = self.object_py.value
