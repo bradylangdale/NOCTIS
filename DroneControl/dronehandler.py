@@ -581,6 +581,7 @@ class DroneHandler(olympe.EventListener):
             return
 
         self.zmqmanager.log('Drone is taking off.')
+        self.nonvolatile["start_yaw"] = self.drone.get_state(attitude)[0]['yaw_absolute']
 
         self.drone(
             FlyingStateChanged(state="hovering", _policy="check")
@@ -734,6 +735,54 @@ class DroneHandler(olympe.EventListener):
         self.state = DroneState.Landing
 
     def landing(self):
+        current_yaw = self.drone.get_state(attitude)[0]['yaw_absolute']
+        self.zmqmanager.log('Drone is correcting is yaw angle.', level='LOG')
+        self.drone(
+            moveBy(0, 0, -5, current_yaw - self.nonvolatile["start_yaw"], MoveTo_Orientation_mode.TO_TARGET, 0)
+            >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+            ).wait().success()
+
+        self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
+        # adjust aruco stuff here
+        arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
+        arucoParams = cv2.aruco.DetectorParameters_create() 
+
+        markerSizeInCM = 0.159
+        mtx = [[ 931.35139613, 0, 646.14084186 ],
+              [ 0, 932.19736807, 370.42202449 ],
+              [ 0, 0, 1 ]]
+        dist = [[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]]
+
+        while ids is None and len(ids) == 0:
+            # detect ArUco markers in the input frame
+            (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
+            time.sleep(0.1)
+            
+        rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
+        self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+
+        self.drone(
+            moveBy(tvec[0], tvec[1], -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
+            >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+            ).wait().success()
+        
+        self.zmqmanager.log('First correction complete, beginning final correction.', level='SUCCESS')
+
+        while ids is None and len(ids) == 0:
+            # detect ArUco markers in the input frame
+            (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
+            time.sleep(0.1)
+            
+        rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
+        self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+
+        self.drone(
+            moveBy(tvec[0], tvec[1], 0, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
+            >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+            ).wait().success()
+        
+        self.zmqmanager.log('Final correction complete! Landing.', level='SUCCESS')
+
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=120)).wait().success()
 
         self.zmqmanager.log('Drone has successfully landed.', level='SUCCESS')
