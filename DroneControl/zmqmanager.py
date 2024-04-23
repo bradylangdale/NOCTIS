@@ -8,7 +8,7 @@ import cv2
 import time
 from dronehandler import DroneState
 
-JPG_QUALITY = [int(cv2.IMWRITE_JPEG_QUALITY), 20]
+JPG_QUALITY = [int(cv2.IMWRITE_JPEG_QUALITY), 30]
 
 
 class ZMQManager:
