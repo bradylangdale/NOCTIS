@@ -24,7 +24,7 @@ from olympe.messages.ardrone3.PilotingSettings import MaxTilt
 from olympe.messages.ardrone3.PilotingSettingsState import MaxTiltChanged
 from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChanged, HomeChanged
 from olympe.messages.common.CommonState import BatteryStateChanged, SensorsStatesListChanged
-from olympe.messages.camera import camera_states
+from olympe.messages.camera import camera_states, set_alignment_offsets, reset_alignment_offsets
 from olympe.messages.gimbal import attitude
 
 from olympe.enums.common.CommonState import SensorsStatesListChanged_SensorName as Sensor
@@ -609,6 +609,23 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone take off is successful going to survey.', level='SUCCESS')
 
+        self.zmqmanager.log('Setting thermal mode to blended.')
+        self.drone(set_mode(mode="blended")).wait().success()
+
+        self.zmqmanager.log('Setting thermal mode to blended.')
+        self.drone(set_rendering(mode="thermal", blending_rate=1)).wait().success()
+
+        self.zmqmanager.log('Setting thermal palette to spot above threshold.')
+        self.drone(set_palette_settings(mode="relative", 
+                                    lowest_temp=0,
+                                    highest_temp=1000,
+                                    outside_colorization="limited",
+                                    relative_range="unlocked",
+                                    spot_type="hot",
+                                    spot_threshold=0.5)).wait().success()
+        
+        self.camera_mode.value = CameraMode.ThermalDetect
+
         # TODO: determine if we need to land or go into idle if there's an error
         self.state = DroneState.Surveying
 
@@ -713,7 +730,7 @@ class DroneHandler(olympe.EventListener):
         self.zmqmanager.log('Reached targets last known location without updates returning home.', level='LOG')
         self.state = DroneState.Returning
 
-    def returning(self):
+    def returning(self):        
         position = self.drone.get_state(PositionChanged)
         return_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
                                                     [self.start_lat, self.start_lng])
@@ -735,7 +752,18 @@ class DroneHandler(olympe.EventListener):
         self.state = DroneState.Landing
 
     def landing(self):
+        self.zmqmanager.log('Setting thermal mode to disabled.')
+        self.drone(set_mode(mode="disabled")).wait().success()
+        
+        self.zmqmanager.log('Setting rendering mode to visible.')
+        self.drone(set_rendering(mode="visible", blending_rate=0)).wait().success()
+
+        self.camera_mode.value = CameraMode.Visible
+
         current_yaw = self.drone.get_state(attitude)[0]['yaw_absolute']
+
+        self.drone(set_alignment_offsets(0, 0, -90, 0)).wait().success()
+        
         self.zmqmanager.log('Drone is correcting is yaw angle.', level='LOG')
         self.drone(
             moveBy(0, 0, -5, current_yaw - self.nonvolatile["start_yaw"], MoveTo_Orientation_mode.TO_TARGET, 0)
@@ -747,45 +775,72 @@ class DroneHandler(olympe.EventListener):
         arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
         arucoParams = cv2.aruco.DetectorParameters_create() 
 
-        markerSizeInCM = 0.159
+        markerSizeInCM = 0.24
         mtx = [[ 931.35139613, 0, 646.14084186 ],
               [ 0, 932.19736807, 370.42202449 ],
               [ 0, 0, 1 ]]
         dist = [[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]]
+        
+        aruco_found = False
 
-        while ids is None and len(ids) == 0:
+        for i in range(100):
             # detect ArUco markers in the input frame
             (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
-            time.sleep(0.1)
+
+            if ids is not None and len(ids) > 0:
+                self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+
+                rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
+                self.drone(
+                    moveBy(tvec[0], tvec[1], -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
+                    >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+                ).wait().success()
             
-        rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
-        self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+                self.zmqmanager.log('First correction complete, beginning landing.', level='SUCCESS')
+                
+                aruco_found = True
+                break
 
-        self.drone(
-            moveBy(tvec[0], tvec[1], -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
-            >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
-            ).wait().success()
+            time.sleep(0.25)
         
-        self.zmqmanager.log('First correction complete, beginning final correction.', level='SUCCESS')
+        if not aruco_found:
+            self.zmqmanager.log('AruCo marker not found! Lowering height.', level='WARNING')
+            
+            self.drone(
+                moveBy(0, 0, -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
+                >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+            ).wait().success()
 
-        while ids is None and len(ids) == 0:
+        aruco_found = False
+
+        for i in range(100):
             # detect ArUco markers in the input frame
             (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
-            time.sleep(0.1)
-            
-        rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
-        self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
 
-        self.drone(
-            moveBy(tvec[0], tvec[1], 0, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
-            >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
-            ).wait().success()
+            if ids is not None and len(ids) > 0:
+                self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+
+                rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
+                self.drone(
+                    moveBy(tvec[0], tvec[1], -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
+                    >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+                ).wait().success()
+            
+                self.zmqmanager.log('Final correction complete, beginning landing.', level='SUCCESS')
+                
+                aruco_found = True
+                break
+
+            time.sleep(0.25)
         
-        self.zmqmanager.log('Final correction complete! Landing.', level='SUCCESS')
+        if not aruco_found:
+            self.zmqmanager.log('AruCo marker not found! Landing anyways.', level='WARNING')
 
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=120)).wait().success()
 
         self.zmqmanager.log('Drone has successfully landed.', level='SUCCESS')
+
+        self.drone(reset_alignment_offsets(0)).wait().success()
 
         self.state = DroneState.Idling
 
