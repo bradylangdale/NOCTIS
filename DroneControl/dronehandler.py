@@ -415,6 +415,7 @@ class DroneHandler(olympe.EventListener):
                         else:
                             frame = visible_model.predict(source=frame, imgsz=224)[0].plot()
 
+
                             if len(results[0].boxes) > 0:
                                 target = results[0].boxes[0]
                                 self.object_detected.value = True
@@ -646,7 +647,9 @@ class DroneHandler(olympe.EventListener):
 
         self.state = DroneState.Returning
 
+    # TODO: adjust w, h, deg_pix for thermal/visible camera
     def get_target_gps(self):
+        # thermal
         w = 780
         h = 610
         deg_pix = 0.064102564   # 50 degrees HFOV 780 pixels
