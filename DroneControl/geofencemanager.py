@@ -402,8 +402,8 @@ class GeofenceManager:
         else:
             self.zmqmanager.log(str(coords), level='SURVEY')
 
-    def check_in_bounds(self, lat, lng):
-        index = self.latlng_to_index([lat, lng])
+    def check_in_bounds(self, coord):
+        index = self.latlng_to_index(coord)
 
         if index in self.kia:
             return True

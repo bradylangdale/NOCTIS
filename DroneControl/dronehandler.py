@@ -19,13 +19,14 @@ from olympe.messages.ardrone3.PilotingState import (FlyingStateChanged,
                                                     AltitudeAboveGroundChanged, 
                                                     PositionChanged,
                                                     SpeedChanged,
-                                                    moveToChanged)
+                                                    moveToChanged,
+                                                    moveByChanged)
 from olympe.messages.ardrone3.PilotingSettings import MaxTilt
 from olympe.messages.ardrone3.PilotingSettingsState import MaxTiltChanged
 from olympe.messages.ardrone3.GPSSettingsState import GPSFixStateChanged, HomeChanged
 from olympe.messages.common.CommonState import BatteryStateChanged, SensorsStatesListChanged
-from olympe.messages.camera import camera_states, set_alignment_offsets, reset_alignment_offsets
-from olympe.messages.gimbal import attitude
+from olympe.messages.camera import camera_states
+from olympe.messages.gimbal import attitude, set_target
 
 from olympe.enums.common.CommonState import SensorsStatesListChanged_SensorName as Sensor
 from olympe.enums.ardrone3.Piloting import MoveTo_Orientation_mode
@@ -372,7 +373,7 @@ class DroneHandler(olympe.EventListener):
 
             try:
                 if last_mode == CameraMode.Visible:
-                    if count > 8:
+                    if count > 14:
                         ret, frame = vcap.read()
                         if ret == False:
                             vcap.grab()
@@ -387,7 +388,7 @@ class DroneHandler(olympe.EventListener):
                         vcap.grab()
                         count += 1
                 elif last_mode == CameraMode.Thermal:
-                    if count > 1:
+                    if count > 2:
                         ret, frame = vcap.read()
                         if ret == False:
                             vcap.grab()
@@ -408,34 +409,34 @@ class DroneHandler(olympe.EventListener):
                         vcap.grab()
                         count += 1
                 elif last_mode == CameraMode.VisibleDetect:
-                    if count > 30:
+                    if count > 35:
                         ret, frame = vcap.read()
                         if ret == False:
                             vcap.grab()
                         else:
-                            frame = visible_model.predict(source=frame, imgsz=224)[0].plot()
+                            results = visible_model.predict(source=frame, imgsz=224)
 
 
                             if len(results[0].boxes) > 0:
-                                target = results[0].boxes[0]
+                                target = results[0].boxes[0].xyxy[0]
                                 self.object_detected.value = True
 
-                                self.object_px.value = (target.xyxy[0] + target.xyxy[2]) / 2
-                                self.object_py.value = (target.xyxy[1] + target.xyxy[3]) / 2
+                                self.object_px.value = (target[0] + target[2]) / 2
+                                self.object_py.value = (target[1] + target[3]) / 2
                             else:
                                 self.object_detected.value = False
                             
                             if len(self.shared_frames) > 0:
-                                self.shared_frames[0] = frame
+                                self.shared_frames[0] = results[0].plot()
                             else:
-                                self.shared_frames.append(frame)    
+                                self.shared_frames.append(results[0].plot())    
 
                         count = 0
                     else:
                         vcap.grab()
                         count += 1
                 elif last_mode == CameraMode.ThermalDetect:
-                    if count > 2:
+                    if count > 4:
                         ret, frame = vcap.read()
                         if ret == False:
                             vcap.grab()
@@ -447,11 +448,11 @@ class DroneHandler(olympe.EventListener):
                             results = thermal_model.predict(source=frame[y1:y2, x1:x2], imgsz=288)
 
                             if len(results[0].boxes) > 0:
-                                target = results[0].boxes[0]
+                                target = results[0].boxes[0].xyxy[0]
                                 self.object_detected.value = True
 
-                                self.object_px.value = (target.xyxy[0] + target.xyxy[2]) / 2
-                                self.object_py.value = (target.xyxy[1] + target.xyxy[3]) / 2
+                                self.object_px.value = (target[0] + target[2]) / 2
+                                self.object_py.value = (target[1] + target[3]) / 2
                             else:
                                 self.object_detected.value = False
                             
@@ -536,7 +537,7 @@ class DroneHandler(olympe.EventListener):
     def takingoff(self):
         # check battery level
         battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
-        if battery_level < 25:
+        if battery_level < 5:
             self.state = DroneState.Charging
             self.zmqmanager.log('Drone needs to charge.', level='WARNING')
             return
@@ -605,29 +606,12 @@ class DroneHandler(olympe.EventListener):
         self.nonvolatile["home"] = [self.start_lat, self.start_lng]
         self.zmqmanager.log('Saving home position for return.')
 
-        self.drone(moveTo(self.start_lat, self.start_lng, 10, MoveTo_Orientation_mode.TO_TARGET, 0, _timeout=1000)).wait().success()
+        self.drone(moveTo(self.start_lat, self.start_lng, 10, MoveTo_Orientation_mode.TO_TARGET, 0, _timeout=10)).wait().success()
 
         self.zmqmanager.log('Drone take off is successful going to survey.', level='SUCCESS')
 
-        self.zmqmanager.log('Setting thermal mode to blended.')
-        self.drone(set_mode(mode="blended")).wait().success()
-
-        self.zmqmanager.log('Setting thermal mode to blended.')
-        self.drone(set_rendering(mode="thermal", blending_rate=1)).wait().success()
-
-        self.zmqmanager.log('Setting thermal palette to spot above threshold.')
-        self.drone(set_palette_settings(mode="relative", 
-                                    lowest_temp=0,
-                                    highest_temp=1000,
-                                    outside_colorization="limited",
-                                    relative_range="unlocked",
-                                    spot_type="hot",
-                                    spot_threshold=0.5)).wait().success()
-        
-        self.camera_mode.value = CameraMode.ThermalDetect
-
         # TODO: determine if we need to land or go into idle if there's an error
-        self.state = DroneState.Surveying
+        self.state = DroneState.Landing
 
     def surveying(self):
         #maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
@@ -648,9 +632,9 @@ class DroneHandler(olympe.EventListener):
             while not flying.success():
                 if self.object_detected.value:
                     self.zmqmanager.log('Target detected!', level='LOG')
-                    target_lat, target_lng = self.get_target_gps()
+                    target_coord = self.get_target_gps()
 
-                    if self.geofencemanager.check_in_bounds([target_lat, target_lng]):
+                    if self.geofencemanager.check_in_bounds(target_coord):
                         self.zmqmanager.log('Pursuing target!', level='LOG')
                         self.drone(CancelMoveTo()).wait().success()
                         self.state = DroneState.Chasing
@@ -694,24 +678,23 @@ class DroneHandler(olympe.EventListener):
         updating = False
         while True:
             position = self.drone.get_state(PositionChanged)
-            target_lat, target_lng = self.get_target_gps()
-            target_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
-                                                        [target_lat, target_lng])
+            target_coord = self.get_target_gps()
+            target_path = self.geofencemanager.get_path([position['latitude'], position['longitude']], target_coord)
 
             i = 1
             for p in target_path:
                 self.zmqmanager.log(f'Moving to target waypoint {i} of {len(target_path)}.')
                 flying = self.drone(
-                    moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
+                    moveTo(p[0], p[1], 10, MoveTo_Orientation.TO_TARGET, 0)
                     >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                     )
                 
                 while not flying.success():
                     if self.object_detected.value:
                         self.zmqmanager.log('Target detected!', level='LOG')
-                        target_lat, target_lng = self.get_target_gps()
+                        target_coord = self.get_target_gps()
 
-                        if self.geofencemanager.check_in_bounds([target_lat, target_lng]):
+                        if self.geofencemanager.check_in_bounds(target_coord):
                             self.zmqmanager.log('Updating target', level='LOG')
                             self.drone(CancelMoveTo()).wait().success()
                             updating = True
@@ -752,38 +735,39 @@ class DroneHandler(olympe.EventListener):
         self.state = DroneState.Landing
 
     def landing(self):
-        self.zmqmanager.log('Setting thermal mode to disabled.')
-        self.drone(set_mode(mode="disabled")).wait().success()
-        
-        self.zmqmanager.log('Setting rendering mode to visible.')
-        self.drone(set_rendering(mode="visible", blending_rate=0)).wait().success()
-
-        self.camera_mode.value = CameraMode.Visible
-
         current_yaw = self.drone.get_state(attitude)[0]['yaw_absolute']
 
-        self.drone(set_alignment_offsets(0, 0, -90, 0)).wait().success()
-        
+        self.drone(set_target(gimbal_id=0,
+                    control_mode='position',
+                    yaw_frame_of_reference='relative',
+                    yaw=0.0,
+                    pitch_frame_of_reference='relative',
+                    pitch=-90,
+                    roll_frame_of_reference='relative',
+                    roll=0.0,
+                )).wait().success()
+                            
         self.zmqmanager.log('Drone is correcting is yaw angle.', level='LOG')
         self.drone(
-            moveBy(0, 0, -5, current_yaw - self.nonvolatile["start_yaw"], MoveTo_Orientation_mode.TO_TARGET, 0)
-            >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+            moveBy(0, 0, 5, math.radians(current_yaw - self.nonvolatile['start_yaw']))
+            >> moveByChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
             ).wait().success()
 
         self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
+        
         # adjust aruco stuff here
-        arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
-        arucoParams = cv2.aruco.DetectorParameters_create() 
+        arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        arucoParams = cv2.aruco.DetectorParameters() 
 
-        markerSizeInCM = 0.24
-        mtx = [[ 931.35139613, 0, 646.14084186 ],
+        markerSizeInCM = 0.152
+        mtx = np.array([[ 931.35139613, 0, 646.14084186 ],
               [ 0, 932.19736807, 370.42202449 ],
-              [ 0, 0, 1 ]]
-        dist = [[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]]
+                        [ 0, 0, 1 ]])
+        dist = np.array([[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]])
         
         aruco_found = False
 
-        for i in range(100):
+        for i in range(50):
             # detect ArUco markers in the input frame
             (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
 
@@ -792,8 +776,8 @@ class DroneHandler(olympe.EventListener):
 
                 rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
                 self.drone(
-                    moveBy(tvec[0], tvec[1], -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
-                    >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+                    moveBy(tvec[0][0][1], tvec[0][0][0], 2.5, 0)
+                    >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
             
                 self.zmqmanager.log('First correction complete, beginning landing.', level='SUCCESS')
@@ -807,13 +791,13 @@ class DroneHandler(olympe.EventListener):
             self.zmqmanager.log('AruCo marker not found! Lowering height.', level='WARNING')
             
             self.drone(
-                moveBy(0, 0, -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
-                >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+                moveBy(0, 0, 2.5, 0)
+                >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
             ).wait().success()
 
         aruco_found = False
 
-        for i in range(100):
+        for i in range(50):
             # detect ArUco markers in the input frame
             (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
 
@@ -822,8 +806,8 @@ class DroneHandler(olympe.EventListener):
 
                 rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
                 self.drone(
-                    moveBy(tvec[0], tvec[1], -2.5, 0, MoveTo_Orientation_mode.TO_TARGET, 0)
-                    >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
+                    moveBy(tvec[0][0][1], tvec[0][0][0], 2.5, 0)
+                    >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
             
                 self.zmqmanager.log('Final correction complete, beginning landing.', level='SUCCESS')
@@ -840,7 +824,15 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone has successfully landed.', level='SUCCESS')
 
-        self.drone(reset_alignment_offsets(0)).wait().success()
+        self.drone(set_target(gimbal_id=0,
+            control_mode='position',
+            yaw_frame_of_reference='relative',
+            yaw=0.0,
+            pitch_frame_of_reference='relative',
+            pitch=0.0,
+            roll_frame_of_reference='relative',
+            roll=0.0,
+        )).wait().success()
 
         self.state = DroneState.Idling
 
