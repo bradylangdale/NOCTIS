@@ -417,6 +417,10 @@ namespace WebUI.Data
 
                                     if (line.Contains("Drone Control requires full restart. Restarting now!"))
                                     {
+                                        LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
+                                        Thread.Sleep(500);
+                                        running = false;
                                         RestartDroneService();
                                         break;
                                     }

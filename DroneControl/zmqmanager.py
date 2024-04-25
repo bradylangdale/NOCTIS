@@ -40,23 +40,11 @@ class ZMQManager:
 
                 socket.send_string('ECHO: Survey')
 
-                #self.log('Stopping Olympe Drone connection.')
-                #Thread(target=self.drone.stop).start()
-
-                #self.log('Olympe Drone connection restarting.')
-                self.drone.start()
-
-                # TODO: improve this, right now this isn't guarenteed
-                self.log('Olympe Drone connection reestablished.')
-
                 self.drone.state = DroneState.TakingOff
                 Thread(target=self.drone.fly).start()
                 self.log('Starting Automated Survey.')
 
             elif message == 'GetCurrentFrame':
-                
-                # This call is instanteous and always will be?
-                #socket.send_string('ECHO: GetCurrentFrame')
 
                 try:
                     if len(self.drone.shared_frames) > 0:

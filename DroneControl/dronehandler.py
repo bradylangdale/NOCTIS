@@ -10,6 +10,7 @@ from enum import IntEnum
 
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
 
+from scipy.spatial.transform import Rotation
 import olympe
 import olympe_deps as od
 from olympe.messages.skyctrl.CoPiloting import setPilotingSource
@@ -40,6 +41,7 @@ import json
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
+RPI = True
 SIM = False
 
 if SIM:
@@ -373,7 +375,7 @@ class DroneHandler(olympe.EventListener):
 
             try:
                 if last_mode == CameraMode.Visible:
-                    if count > 14:
+                    if count > 1:
                         ret, frame = vcap.read()
                         if ret == False:
                             vcap.grab()
@@ -608,10 +610,11 @@ class DroneHandler(olympe.EventListener):
 
         self.drone(moveTo(self.start_lat, self.start_lng, 10, MoveTo_Orientation_mode.TO_TARGET, 0, _timeout=10)).wait().success()
 
+        time.sleep(5)
+
         self.zmqmanager.log('Drone take off is successful going to survey.', level='SUCCESS')
 
-        # TODO: determine if we need to land or go into idle if there's an error
-        self.state = DroneState.Landing
+        self.state = DroneState.Returning
 
     def surveying(self):
         #maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
@@ -735,7 +738,7 @@ class DroneHandler(olympe.EventListener):
         self.state = DroneState.Landing
 
     def landing(self):
-        current_yaw = self.drone.get_state(attitude)[0]['yaw_absolute']
+        self.zmqmanager.log('Drone is adjusting the camera.', level='LOG')
 
         self.drone(set_target(gimbal_id=0,
                     control_mode='position',
@@ -746,79 +749,67 @@ class DroneHandler(olympe.EventListener):
                     roll_frame_of_reference='relative',
                     roll=0.0,
                 )).wait().success()
-                            
-        self.zmqmanager.log('Drone is correcting is yaw angle.', level='LOG')
-        self.drone(
-            moveBy(0, 0, 5, math.radians(current_yaw - self.nonvolatile['start_yaw']))
-            >> moveByChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
-            ).wait().success()
-
-        self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
         
+        time.sleep(10)
+
         # adjust aruco stuff here
         arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        arucoParams = cv2.aruco.DetectorParameters() 
+        arucoParams = cv2.aruco.DetectorParameters()
+        
+        if not RPI:
+            detector = cv2.aruco.ArucoDetector(arucoDict, arucoParams)
 
-        markerSizeInCM = 0.152
+        markerSizeInM = 0.192
         mtx = np.array([[ 931.35139613, 0, 646.14084186 ],
               [ 0, 932.19736807, 370.42202449 ],
                         [ 0, 0, 1 ]])
         dist = np.array([[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]])
         
-        aruco_found = False
+        corrections = 8
+        decent_amount = 10.0 / corrections
+        for i in range(corrections):
+            self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
 
-        for i in range(50):
-            # detect ArUco markers in the input frame
-            (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
+            aruco_found = False
 
-            if ids is not None and len(ids) > 0:
-                self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+            for j in range(25):
+                # detect ArUco markers in the input frame
+                if not RPI:
+                    (corners, ids, rejected) = detector.detectMarkers(self.shared_frames[0])
+                else:
+                    (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
 
-                rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
-                self.drone(
-                    moveBy(tvec[0][0][1], tvec[0][0][0], 2.5, 0)
-                    >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
-                ).wait().success()
-            
-                self.zmqmanager.log('First correction complete, beginning landing.', level='SUCCESS')
+                if ids is not None and len(ids) > 0:
+                    self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+
+                    rvec, tvec, _ = self.estimatePoseSingleMarkers(corners, markerSizeInM, mtx, dist)
+                    self.drone(
+                        moveBy(-tvec[0][0][1], tvec[0][0][0], decent_amount, rvec[0][0][2])
+                        >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
+                    ).wait().success()
                 
-                aruco_found = True
-                break
+                    self.zmqmanager.log('Correction ' + str(i + 1) + ' of ' + str(corrections) + ' complete!', level='SUCCESS')
+                    
+                    aruco_found = True
+                    break
 
-            time.sleep(0.25)
-        
-        if not aruco_found:
-            self.zmqmanager.log('AruCo marker not found! Lowering height.', level='WARNING')
+                time.sleep(0.25)
             
-            self.drone(
-                moveBy(0, 0, 2.5, 0)
-                >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
-            ).wait().success()
-
-        aruco_found = False
-
-        for i in range(50):
-            # detect ArUco markers in the input frame
-            (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
-
-            if ids is not None and len(ids) > 0:
-                self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
-
-                rvec , tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, markerSizeInCM, mtx, dist)
-                self.drone(
-                    moveBy(tvec[0][0][1], tvec[0][0][0], 2.5, 0)
-                    >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
-                ).wait().success()
-            
-                self.zmqmanager.log('Final correction complete, beginning landing.', level='SUCCESS')
+            if not aruco_found:
+                self.zmqmanager.log('AruCo marker not found! Lowering height.', level='WARNING')
                 
-                aruco_found = True
-                break
+                self.drone(
+                    moveTo(self.start_lat, self.start_lng, decent_amount,
+                           MoveTo_Orientation_mode.HEADING_DURING,
+                           math.radians(self.nonvolatile['start_yaw'] - self.drone.get_state(attitude)[0]['yaw_absolute']))
+                    >> moveToChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
+                ).wait().success()
 
-            time.sleep(0.25)
-        
-        if not aruco_found:
-            self.zmqmanager.log('AruCo marker not found! Landing anyways.', level='WARNING')
+            aruco_found = False
+
+            time.sleep(1)
+
+        self.zmqmanager.log('Drone is landing!', level='LOG')
 
         self.drone(Landing() >> FlyingStateChanged(state="landed", _timeout=120)).wait().success()
 
@@ -838,3 +829,87 @@ class DroneHandler(olympe.EventListener):
 
     def charging(self):
         self.state = DroneState.Idling
+
+    def euler_from_quaternion(self, x, y, z, w):
+        """
+        Convert a quaternion into euler angles (roll, pitch, yaw)
+        roll is rotation around x in radians (counterclockwise)
+        pitch is rotation around y in radians (counterclockwise)
+        yaw is rotation around z in radians (counterclockwise)
+        """
+        t0 = +2.0 * (w * x + y * z)
+        t1 = +1.0 - 2.0 * (x * x + y * y)
+        roll_x = math.atan2(t0, t1)
+            
+        t2 = +2.0 * (w * y - z * x)
+        t2 = +1.0 if t2 > +1.0 else t2
+        t2 = -1.0 if t2 < -1.0 else t2
+        pitch_y = math.asin(t2)
+            
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (y * y + z * z)
+        yaw_z = math.atan2(t3, t4)
+            
+        return roll_x, pitch_y, yaw_z # in radians
+
+    def estimatePoseSingleMarkers(self, corners, marker_size, mtx, distortion):
+        '''
+        This will estimate the rvec and tvec for each of the marker corners detected by:
+        corners, ids, rejectedImgPoints = detector.detectMarkers(image)
+        corners - is an array of detected corners for each detected marker in the image
+        marker_size - is the size of the detected markers
+        mtx - is the camera matrix
+        distortion - is the camera distortion matrix
+        RETURN list of rvecs, tvecs, and trash (so that it corresponds to the old estimatePoseSingleMarkers())
+        '''
+
+        if not RPI:
+            marker_points = np.array([[-marker_size / 2, marker_size / 2, 0],
+                                    [marker_size / 2, marker_size / 2, 0],
+                                    [marker_size / 2, -marker_size / 2, 0],
+                                    [-marker_size / 2, -marker_size / 2, 0]], dtype=np.float32)
+            trash = []
+            rvecs = []
+            tvecs = []
+            
+            for c in corners:
+                nada, R, t = cv2.solvePnP(marker_points, c, mtx, distortion, False, cv2.SOLVEPNP_IPPE_SQUARE)
+                rvecs.append([[R[0][0], R[1][0], R[2][0]]])
+                tvecs.append([[t[0][0], t[1][0], t[2][0]]])
+                trash.append(nada)
+        else:
+            rvecs , tvecs, trash = cv2.aruco.estimatePoseSingleMarkers(corners, marker_size, mtx, distortion)
+
+        # Store the rotation information
+        rotation_matrix = np.eye(4)
+        rotation_matrix[0:3, 0:3] = cv2.Rodrigues(np.array(rvecs[0][0]))[0]
+        r = Rotation.from_matrix(rotation_matrix[0:3, 0:3])
+        quat = r.as_quat()   
+         
+        # Quaternion format     
+        transform_rotation_x = quat[0] 
+        transform_rotation_y = quat[1] 
+        transform_rotation_z = quat[2] 
+        transform_rotation_w = quat[3] 
+         
+        # Euler angle format in radians
+        roll_x, pitch_y, yaw_z = self.euler_from_quaternion(transform_rotation_x, 
+                                                       transform_rotation_y, 
+                                                       transform_rotation_z, 
+                                                       transform_rotation_w)
+        
+        yaw_z += math.pi
+
+        # reduce the angle  
+        yaw_z =  yaw_z % (2 * math.pi); 
+
+        # force it to be the positive remainder, so that 0 <= angle < 360  
+        yaw_z = (yaw_z + (2 * math.pi)) % (2 * math.pi);  
+
+        # force into the minimum absolute value residue class, so that -180 < angle <= 180  
+        if (yaw_z > math.pi):
+            yaw_z -= 2 * math.pi; 
+
+        rvecs[0][0][2] = yaw_z
+        
+        return rvecs, tvecs, trash
