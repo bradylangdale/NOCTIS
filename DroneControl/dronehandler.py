@@ -375,7 +375,7 @@ class DroneHandler(olympe.EventListener):
 
             try:
                 if last_mode == CameraMode.Visible:
-                    if count > 1:
+                    if count > 25:
                         ret, frame = vcap.read()
                         if ret == False:
                             vcap.grab()
@@ -614,7 +614,7 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone take off is successful going to survey.', level='SUCCESS')
 
-        self.state = DroneState.Returning
+        self.state = DroneState.Surveying
 
     def surveying(self):
         #maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
@@ -759,14 +759,14 @@ class DroneHandler(olympe.EventListener):
         if not RPI:
             detector = cv2.aruco.ArucoDetector(arucoDict, arucoParams)
 
-        markerSizeInM = 0.192
+        markerSizeInM = 0.154
         mtx = np.array([[ 931.35139613, 0, 646.14084186 ],
               [ 0, 932.19736807, 370.42202449 ],
                         [ 0, 0, 1 ]])
         dist = np.array([[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]])
         
-        corrections = 8
-        decent_amount = 10.0 / corrections
+        corrections = 4
+        decent_amount = 12.0 / corrections
         for i in range(corrections):
             self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
 
@@ -784,7 +784,7 @@ class DroneHandler(olympe.EventListener):
 
                     rvec, tvec, _ = self.estimatePoseSingleMarkers(corners, markerSizeInM, mtx, dist)
                     self.drone(
-                        moveBy(-tvec[0][0][1], tvec[0][0][0], decent_amount, rvec[0][0][2])
+                        moveBy(-tvec[0][0][1] + 0.04, tvec[0][0][0], decent_amount, rvec[0][0][2])
                         >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
                     ).wait().success()
                 
@@ -898,7 +898,7 @@ class DroneHandler(olympe.EventListener):
                                                        transform_rotation_z, 
                                                        transform_rotation_w)
         
-        yaw_z += math.pi
+        #yaw_z += math.pi
 
         # reduce the angle  
         yaw_z =  yaw_z % (2 * math.pi); 
