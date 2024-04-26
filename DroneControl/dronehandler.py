@@ -221,11 +221,11 @@ class DroneHandler(olympe.EventListener):
                 # check battery level
                 battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
 
-                if battery_level % 25 == 0 or battery_level != last_bat:
-                    if battery_level % 25 == 0 and battery_level != last_bat:
+                if battery_level % 10 == 0 or battery_level != last_bat:
+                    if battery_level % 10 == 0 and battery_level != last_bat:
                         self.zmqmanager.log('Battery Level at ' + str(battery_level) + '%', level='WARNING')
 
-                    if battery_level != last_bat and battery_level <= 25:
+                    if battery_level != last_bat and battery_level <= 10:
                         if self.state == DroneState.Idling and self.state != DroneState.Charging:
                             self.state = DroneState.Charging
                             Thread(target=self.fly).start()
@@ -375,7 +375,7 @@ class DroneHandler(olympe.EventListener):
 
             try:
                 if last_mode == CameraMode.Visible:
-                    if count > 25:
+                    if count > 1:
                         ret, frame = vcap.read()
                         if ret == False:
                             vcap.grab()
@@ -417,7 +417,6 @@ class DroneHandler(olympe.EventListener):
                             vcap.grab()
                         else:
                             results = visible_model.predict(source=frame, imgsz=224)
-
 
                             if len(results[0].boxes) > 0:
                                 target = results[0].boxes[0].xyxy[0]
@@ -614,7 +613,7 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone take off is successful going to survey.', level='SUCCESS')
 
-        self.state = DroneState.Surveying
+        self.state = DroneState.Landing
 
     def surveying(self):
         #maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
@@ -759,19 +758,21 @@ class DroneHandler(olympe.EventListener):
         if not RPI:
             detector = cv2.aruco.ArucoDetector(arucoDict, arucoParams)
 
-        markerSizeInM = 0.154
+        markerSizeInM = 0.192
         mtx = np.array([[ 931.35139613, 0, 646.14084186 ],
               [ 0, 932.19736807, 370.42202449 ],
                         [ 0, 0, 1 ]])
         dist = np.array([[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]])
         
-        corrections = 4
+        corrections = 3
         decent_amount = 12.0 / corrections
         for i in range(corrections):
             self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
-
-            aruco_found = False
-
+            
+            detections = 0
+            dx = 0
+            dy = 0
+            dyaw = 0
             for j in range(25):
                 # detect ArUco markers in the input frame
                 if not RPI:
@@ -780,22 +781,28 @@ class DroneHandler(olympe.EventListener):
                     (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
 
                 if ids is not None and len(ids) > 0:
-                    self.zmqmanager.log('AruCo marker found! Correcting position.', level='SUCCESS')
+                    _dx, _dy, _dyaw = self.estimatePoseSingleMarkers(corners, markerSizeInM, mtx, dist)
+                    dx += _dx
+                    dy += _dy
+                    dyaw += _dyaw
+                    detections += 1
 
-                    rvec, tvec, _ = self.estimatePoseSingleMarkers(corners, markerSizeInM, mtx, dist)
-                    self.drone(
-                        moveBy(-tvec[0][0][1] + 0.04, tvec[0][0][0], decent_amount, rvec[0][0][2])
-                        >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
-                    ).wait().success()
-                
-                    self.zmqmanager.log('Correction ' + str(i + 1) + ' of ' + str(corrections) + ' complete!', level='SUCCESS')
-                    
-                    aruco_found = True
-                    break
+                time.sleep(0.5)
 
-                time.sleep(0.25)
+            if detections > 0:
+                dx /= detections
+                dy /= detections
+                dyaw /= detections
+
+                self.zmqmanager.log('AruCo marker scan completed with ' + str(detections) + ' detections! Correcting now.', level='SUCCESS')
+
+                self.drone(
+                    moveBy(dx - 0.04, dy, decent_amount, dyaw)
+                    >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
+                ).wait().success()
             
-            if not aruco_found:
+                self.zmqmanager.log('Correction ' + str(i + 1) + ' of ' + str(corrections) + ' complete!', level='SUCCESS')
+            else:
                 self.zmqmanager.log('AruCo marker not found! Lowering height.', level='WARNING')
                 
                 self.drone(
@@ -804,8 +811,6 @@ class DroneHandler(olympe.EventListener):
                            math.radians(self.nonvolatile['start_yaw'] - self.drone.get_state(attitude)[0]['yaw_absolute']))
                     >> moveToChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
-
-            aruco_found = False
 
             time.sleep(1)
 
@@ -898,7 +903,7 @@ class DroneHandler(olympe.EventListener):
                                                        transform_rotation_z, 
                                                        transform_rotation_w)
         
-        #yaw_z += math.pi
+        yaw_z += math.pi
 
         # reduce the angle  
         yaw_z =  yaw_z % (2 * math.pi); 
@@ -912,4 +917,4 @@ class DroneHandler(olympe.EventListener):
 
         rvecs[0][0][2] = yaw_z
         
-        return rvecs, tvecs, trash
+        return -tvecs[0][0][1], tvecs[0][0][0], rvecs[0][0][2]
