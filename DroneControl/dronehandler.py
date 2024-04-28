@@ -356,7 +356,6 @@ class DroneHandler(olympe.EventListener):
         last_mode = CameraMode.Init
 
         write_num = 1
-        display_num = 0
 
         while self.running.value:
             if last_mode != CameraMode(self.camera_mode.value):
@@ -380,17 +379,12 @@ class DroneHandler(olympe.EventListener):
 
                 self.write_ready = False
                 Thread(target=self.process_frame, args=(write_num, frame)).start()
-
-                display_num += 1;
-                display_num %= 32;
-
-                self.display_num.value = display_num
     
     def process_frame(self, num, frame):
         current_mode = CameraMode(self.camera_mode.value)
 
         if current_mode == CameraMode.Visible:
-            time.sleep(0.05)
+            time.sleep(0.1)
         elif current_mode == CameraMode.VisibleDetect:
             results = self.visible_model.predict(source=frame, imgsz=224)
 
@@ -436,6 +430,8 @@ class DroneHandler(olympe.EventListener):
 
         self.current_frame[0] = frame
         cv2.imwrite('./wwwroot/Data/Videos/current_frame' + str(num) + '.jpg', frame, JPG_QUALITY)
+        self.display_num.value = num
+
         self.write_ready = True
 
     def toggle_thermal(self):
