@@ -201,7 +201,7 @@ namespace WebUI.Data
         {
             try {
                 // for good measure
-                RunCommandWithBash("killall -9 python3");
+                RunCommandWithBash("killall -9 python3 pt_main_thread");
 
                 running = false;
                 if (thread is not null) {
