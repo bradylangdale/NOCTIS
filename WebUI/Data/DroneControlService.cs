@@ -241,7 +241,7 @@ namespace WebUI.Data
 
             thread = new Thread(() =>
             {
-                RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.10.8/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
+                RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.11.9/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
                 //Thread.Sleep(30000);
                 using (var client = new RequestSocket())
                 {   

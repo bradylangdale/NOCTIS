@@ -582,6 +582,11 @@ class DroneHandler(olympe.EventListener):
             self.zmqmanager.log('Drone vertical camera is not functional.', level='ERROR')
             return
 
+        if not self.thermal_state:
+            self.toggle_thermal()
+
+        time.sleep(30)
+
         self.zmqmanager.log('Drone is taking off.')
         self.nonvolatile["start_yaw"] = self.drone.get_state(attitude)[0]['yaw_absolute']
 
@@ -613,11 +618,21 @@ class DroneHandler(olympe.EventListener):
 
         self.zmqmanager.log('Drone take off is successful going to survey.', level='SUCCESS')
 
-        self.state = DroneState.Landing
+        self.state = DroneState.Surveying
 
     def surveying(self):
         #maxtilt = self.drone.get_state(MaxTiltChanged)["max"]
         self.drone(MaxTilt(40)).wait()
+
+        self.drone(set_target(gimbal_id=0,
+                                                  control_mode='position',
+                                                  yaw_frame_of_reference='relative',
+                                                  yaw=0.0,
+                                                  pitch_frame_of_reference='relative',
+                                                  pitch=-30,
+                                                  roll_frame_of_reference='relative',
+                                                  roll=0.0,
+                                              )).wait().success()
 
         self.zmqmanager.log('Drone is generating a surveillance path.')
         survey_path = self.geofencemanager.get_survey_path([self.start_lat, self.start_lng])
@@ -627,7 +642,7 @@ class DroneHandler(olympe.EventListener):
         for p in survey_path:
             self.zmqmanager.log(f'Moving to survey waypoint {i} of {len(survey_path)}.')
             flying = self.drone(
-                moveTo(p[0], p[1], 10, MoveTo_Orientation_mode.TO_TARGET, 0)
+                moveTo(p[0], p[1], 5, MoveTo_Orientation_mode.TO_TARGET, 0)
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 )
             
@@ -715,7 +730,10 @@ class DroneHandler(olympe.EventListener):
         self.zmqmanager.log('Reached targets last known location without updates returning home.', level='LOG')
         self.state = DroneState.Returning
 
-    def returning(self):        
+    def returning(self):
+        if self.thermal_state:
+            self.toggle_thermal()
+
         position = self.drone.get_state(PositionChanged)
         return_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
                                                     [self.start_lat, self.start_lng])
@@ -787,7 +805,7 @@ class DroneHandler(olympe.EventListener):
                     dyaw += _dyaw
                     detections += 1
 
-                time.sleep(0.5)
+                time.sleep(0.05)
 
             if detections > 0:
                 dx /= detections
@@ -903,7 +921,7 @@ class DroneHandler(olympe.EventListener):
                                                        transform_rotation_z, 
                                                        transform_rotation_w)
         
-        yaw_z += math.pi
+        #yaw_z += math.pi
 
         # reduce the angle  
         yaw_z =  yaw_z % (2 * math.pi); 
