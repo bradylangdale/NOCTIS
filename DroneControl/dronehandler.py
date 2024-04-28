@@ -44,8 +44,8 @@ from ultralytics import YOLO
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
 
-RPI = True
-SIM = False
+RPI = False
+SIM = True
 
 if SIM:
     DRONE_IP = os.environ.get("DRONE_IP", "10.202.0.1")
@@ -540,10 +540,10 @@ class DroneHandler(olympe.EventListener):
             self.zmqmanager.log('Drone vertical camera is not functional.', level='ERROR')
             return
 
-        if not self.thermal_state:
-            self.toggle_thermal()
+        #if not self.thermal_state:
+        #    self.toggle_thermal()
+        #    time.sleep(30)
 
-        time.sleep(30)
 
         self.zmqmanager.log('Drone is taking off.')
         self.nonvolatile["start_yaw"] = self.drone.get_state(attitude)[0]['yaw_absolute']
@@ -734,13 +734,13 @@ class DroneHandler(olympe.EventListener):
         if not RPI:
             detector = cv2.aruco.ArucoDetector(arucoDict, arucoParams)
 
-        markerSizeInM = 0.192
+        markerSizeInM = 0.154
         mtx = np.array([[ 931.35139613, 0, 646.14084186 ],
               [ 0, 932.19736807, 370.42202449 ],
                         [ 0, 0, 1 ]])
         dist = np.array([[ 0.01386571, -0.00697705,  0.00331248,  0.00302185, -0.04361382]])
         
-        corrections = 3
+        corrections = 4
         decent_amount = 12.0 / corrections
         for i in range(corrections):
             self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
@@ -788,7 +788,10 @@ class DroneHandler(olympe.EventListener):
                     >> moveToChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
                 ).wait().success()
 
-            time.sleep(1)
+            if SIM:
+                time.sleep(3)
+            else:
+                time.sleep(1)
 
         self.zmqmanager.log('Drone is landing!', level='LOG')
 
