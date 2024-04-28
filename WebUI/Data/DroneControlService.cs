@@ -242,11 +242,10 @@ namespace WebUI.Data
             thread = new Thread(() =>
             {
                 RunCommandWithBash(home + "/code/parrot-olympe/out/olympe-linux/pyenv_root/versions/3.11.9/bin/python3 " + cwd +"/DroneControl/dronecontrol.py");
-                //Thread.Sleep(30000);
+                Thread.Sleep(5000);
                 using (var client = new RequestSocket())
                 {   
-                    int display_num = 0;
-                    int write_num = 1;
+                    string last_num = "-2";
 
                     client.Connect("tcp://localhost:5555");
                     while (running)
@@ -446,9 +445,6 @@ namespace WebUI.Data
                             {
                                 client.SendFrame("GetCurrentFrame");
 
-                                string str_count = write_num.ToString();
-                                str_count = (str_count == "") ? "0" : str_count;
-
                                 string? frame = "";
                                 if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out frame))
                                 {
@@ -460,27 +456,17 @@ namespace WebUI.Data
                                     break;
                                 }
 
-                                if (frame != "Not Ready")
+                                if (frame != "-1")
                                 {
-                                    System.IO.File.WriteAllBytes(
-                                        home + "/Projects/NOCTIS/WebUI/wwwroot/Data/Videos/current_frame" + str_count + ".jpg",
-                                        Encoding.GetEncoding("ISO-8859-1").GetBytes(frame)
-                                    );
-
-                                    write_num += 1;
-                                    write_num %= 32;
-
-                                    str_count = display_num.ToString();
-
-                                    str_count = (str_count == "") ? "0" : str_count;
-
-                                    lock (imagePath)
+                                    if (frame != last_num)
                                     {
-                                        imagePath = "/Data/Videos/current_frame" + str_count + ".jpg" + "?DummyId=" + DateTime.Now.Ticks;
-                                    }
+                                        last_num = frame;
 
-                                    display_num += 1;
-                                    display_num %= 32;
+                                        lock (imagePath)
+                                        {
+                                            imagePath = "/Data/Videos/current_frame" + frame + ".jpg" + "?DummyId=" + DateTime.Now.Ticks;
+                                        }
+                                    }
                                 } else {
                                     lock (imagePath)
                                     {

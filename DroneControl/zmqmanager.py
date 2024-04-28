@@ -45,15 +45,7 @@ class ZMQManager:
                 self.log('Starting Automated Survey.')
 
             elif message == 'GetCurrentFrame':
-
-                try:
-                    if len(self.drone.shared_frames) > 0:
-                            socket.send_string(cv2.imencode('.jpg', self.drone.shared_frames[0], JPG_QUALITY)[1].tobytes().decode('iso-8859-1'))
-                    else:
-                        socket.send_string('Not Ready')
-                except Exception as e:
-                    print(e)
-                    socket.send_string('Bad Image')
+                socket.send_string(str(self.drone.display_num.value))
 
             elif message == 'ConnectDrone':
 

@@ -34,9 +34,12 @@ from olympe.enums.ardrone3.Piloting import MoveTo_Orientation_mode
 from olympe.messages.thermal import set_mode, set_rendering, set_palette_settings, mode, rendering
 
 from multiprocessing import Process, Manager
-from ctypes import c_bool, c_uint16
+from ctypes import c_bool, c_uint16, c_int8
 
 import json
+
+# Load the YOLOv8 model
+from ultralytics import YOLO
 
 
 olympe.log.update_config({"loggers": {"olympe": {"level": "WARNING"}}})
@@ -51,6 +54,7 @@ else:
 
 DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT", '554')
 
+JPG_QUALITY = [int(cv2.IMWRITE_JPEG_QUALITY), 40]
 
 class DroneState(IntEnum):
     Idling = 0
@@ -89,7 +93,11 @@ class DroneHandler(olympe.EventListener):
         self.nonvolatile = { 'state': int(DroneState.Idling) }
 
         self.manager = Manager()
-        self.shared_frames = self.manager.list()
+        self.current_frame = self.manager.list()
+        self.current_frame.append([])
+        self.write_ready = True
+
+        self.display_num = self.manager.Value(c_int8, -1)
 
         self.need_video_restart = False
         self.video_thread = None
@@ -139,6 +147,12 @@ class DroneHandler(olympe.EventListener):
         if not(self.state == DroneState.Idling or self.state == DroneState.Charging):
             self.state = DroneState.Error
 
+        # Load the visible model
+        self.visible_model = YOLO('../DroneControl/models/yolov5-visible.onnx')
+
+        # Load the thermal model
+        self.thermal_model = YOLO('../DroneControl/models/yolov5-thermal.onnx')
+
         Thread(target=self.heartbeat).start()
 
     def start(self, reattempt=False):
@@ -175,8 +189,6 @@ class DroneHandler(olympe.EventListener):
 
             if self.running.value:
                 self.running.value = False
-                self.shared_frames[:] = []
-
                 time.sleep(100)
 
             return True
@@ -209,7 +221,7 @@ class DroneHandler(olympe.EventListener):
                 else:
                     self.zmqmanager.log('Drone connection failed!', level='ERROR')
                     self.running.value = False
-                    self.shared_frames[:] = []
+                    #self.shared_frames[:] = []
                     Thread(target=self.stop).start()
 
             if not self.drone.connection_state():
@@ -340,142 +352,92 @@ class DroneHandler(olympe.EventListener):
         vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
         vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
         vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
-        vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
-        # # Load the YOLOv8 model
-        from ultralytics import YOLO
-
-        # Load the visible model
-        visible_model = YOLO('../DroneControl/models/yolov5-visible.onnx')
-
-        # Load the thermal model
-        thermal_model = YOLO('../DroneControl/models/yolov5-thermal.onnx')
-
-        # capture every third frame
-        count = 0
         last_mode = CameraMode.Init
+
+        write_num = 1
+        display_num = 0
+
         while self.running.value:
             if last_mode != CameraMode(self.camera_mode.value):
                 current_mode = CameraMode(self.camera_mode.value)
                 print('Switched from', last_mode, 'to', current_mode)
                 if (last_mode in [CameraMode.Visible, CameraMode.VisibleDetect] and current_mode in [CameraMode.Thermal, CameraMode.ThermalDetect]) or \
                    (last_mode in [CameraMode.Thermal, CameraMode.ThermalDetect] and current_mode in [CameraMode.Visible, CameraMode.VisibleDetect]):
-                    print('OpenCV is restarting')
+                    print('Video is restarting')
                     vcap.release()
-                    vcap = cv2.VideoCapture(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live')
-                    vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
-                    vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
-                    vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
-                    vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-                    vcap.grab()
+                    vcap.open(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live')
                 else:
-                    print('OpenCV is not restarting')
+                    print('Video is not restarting')
 
                 last_mode = current_mode
 
-            try:
-                if last_mode == CameraMode.Visible:
-                    if count > 1:
-                        ret, frame = vcap.read()
-                        if ret == False:
-                            vcap.grab()
-                        else:
-                            if len(self.shared_frames) > 0:
-                                self.shared_frames[0] = frame
-                            else:
-                                self.shared_frames.append(frame)
+            ret, frame = vcap.read()
 
-                        count = 0
-                    else:
-                        vcap.grab()
-                        count += 1
-                elif last_mode == CameraMode.Thermal:
-                    if count > 2:
-                        ret, frame = vcap.read()
-                        if ret == False:
-                            vcap.grab()
-                        else:
-                            x1 = 240
-                            y1 = 30
-                            x2 = 1020
-                            y2 = 640
+            if ret == True and self.write_ready:
+                write_num += 1;
+                write_num %= 32;
 
-                            frame = frame[y1:y2, x1:x2]
-                            if len(self.shared_frames) > 0:
-                                self.shared_frames[0] = frame
-                            else:
-                                self.shared_frames.append(frame)
+                self.write_ready = False
+                Thread(target=self.process_frame, args=(write_num, frame)).start()
 
-                        count = 0
-                    else:
-                        vcap.grab()
-                        count += 1
-                elif last_mode == CameraMode.VisibleDetect:
-                    if count > 35:
-                        ret, frame = vcap.read()
-                        if ret == False:
-                            vcap.grab()
-                        else:
-                            results = visible_model.predict(source=frame, imgsz=224)
+                display_num += 1;
+                display_num %= 32;
 
-                            if len(results[0].boxes) > 0:
-                                target = results[0].boxes[0].xyxy[0]
-                                self.object_detected.value = True
-
-                                self.object_px.value = (target[0] + target[2]) / 2
-                                self.object_py.value = (target[1] + target[3]) / 2
-                            else:
-                                self.object_detected.value = False
-                            
-                            if len(self.shared_frames) > 0:
-                                self.shared_frames[0] = results[0].plot()
-                            else:
-                                self.shared_frames.append(results[0].plot())    
-
-                        count = 0
-                    else:
-                        vcap.grab()
-                        count += 1
-                elif last_mode == CameraMode.ThermalDetect:
-                    if count > 4:
-                        ret, frame = vcap.read()
-                        if ret == False:
-                            vcap.grab()
-                        else:
-                            x1 = 240
-                            y1 = 30
-                            x2 = 1020
-                            y2 = 640
-                            results = thermal_model.predict(source=frame[y1:y2, x1:x2], imgsz=288)
-
-                            if len(results[0].boxes) > 0:
-                                target = results[0].boxes[0].xyxy[0]
-                                self.object_detected.value = True
-
-                                self.object_px.value = (target[0] + target[2]) / 2
-                                self.object_py.value = (target[1] + target[3]) / 2
-                            else:
-                                self.object_detected.value = False
-                            
-                            if len(self.shared_frames) > 0:
-                                self.shared_frames[0] = results[0].plot()
-                            else:
-                                self.shared_frames.append(results[0].plot())    
-
-                        count = 0
-                    else:
-                        vcap.grab()
-                        count += 1
-            except Exception as e:
-                print(e)
-                vcap.release()
-                vcap = cv2.VideoCapture(f'rtsp://{DRONE_IP}:{DRONE_RTSP_PORT}/live')
-                vcap.set(cv2.CAP_PROP_FPS, FRAMERATE)
-                vcap.set(cv2.CAP_PROP_FRAME_WIDTH, WEBCAM_RAW_RES[0])
-                vcap.set(cv2.CAP_PROP_FRAME_HEIGHT, WEBCAM_RAW_RES[1])
-                vcap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-                vcap.grab()
+                self.display_num.value = display_num
     
+    def process_frame(self, num, frame):
+        current_mode = CameraMode(self.camera_mode.value)
+
+        if current_mode == CameraMode.Visible:
+            time.sleep(0.05)
+        elif current_mode == CameraMode.VisibleDetect:
+            results = self.visible_model.predict(source=frame, imgsz=224)
+
+            if len(results[0].boxes) > 0:
+                target = results[0].boxes[0].xyxy[0]
+                self.object_detected.value = True
+
+                self.object_px.value = (target[0] + target[2]) / 2
+                self.object_py.value = (target[1] + target[3]) / 2
+
+                frame = results[0].plot()
+            else:
+                self.object_detected.value = False
+
+            time.sleep(0.25)
+        elif current_mode == CameraMode.Thermal:
+            x1 = 240
+            y1 = 30
+            x2 = 1020
+            y2 = 640
+
+            frame = frame[y1:y2, x1:x2]
+        elif current_mode == CameraMode.ThermalDetect:
+            x1 = 240
+            y1 = 30
+            x2 = 1020
+            y2 = 640
+
+            frame = frame[y1:y2, x1:x2]
+
+            results = self.visible_model.predict(source=frame, imgsz=224)
+
+            if len(results[0].boxes) > 0:
+                target = results[0].boxes[0].xyxy[0]
+                self.object_detected.value = True
+
+                self.object_px.value = (target[0] + target[2]) / 2
+                self.object_py.value = (target[1] + target[3]) / 2
+
+                frame = results[0].plot()
+            else:
+                self.object_detected.value = False
+
+        self.current_frame[0] = frame
+        cv2.imwrite('./wwwroot/Data/Videos/current_frame' + str(num) + '.jpg', frame, JPG_QUALITY)
+        self.write_ready = True
+
     def toggle_thermal(self):
         if not self.thermal_state:
             self.zmqmanager.log('Setting thermal mode to blended.')
@@ -794,9 +756,9 @@ class DroneHandler(olympe.EventListener):
             for j in range(25):
                 # detect ArUco markers in the input frame
                 if not RPI:
-                    (corners, ids, rejected) = detector.detectMarkers(self.shared_frames[0])
+                    (corners, ids, rejected) = detector.detectMarkers(self.current_frame[0])
                 else:
-                    (corners, ids, rejected) = cv2.aruco.detectMarkers(self.shared_frames[0], arucoDict, parameters=arucoParams)
+                    (corners, ids, rejected) = cv2.aruco.detectMarkers(self.current_frame[0], arucoDict, parameters=arucoParams)
 
                 if ids is not None and len(ids) > 0:
                     _dx, _dy, _dyaw = self.estimatePoseSingleMarkers(corners, markerSizeInM, mtx, dist)
