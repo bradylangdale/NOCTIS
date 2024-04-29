@@ -594,7 +594,7 @@ namespace WebUI.Data
                             }
                         }
 
-                        lock (startRuns)
+                        lock (soh_battery)
                         {
                             if (scheduler)
                             {
