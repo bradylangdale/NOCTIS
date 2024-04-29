@@ -47,6 +47,10 @@ namespace WebUI.Data
         private string targetLat = "N/A";
         private string targetLng = "N/A";
 
+        private TimeOnly startRuns;
+        private TimeOnly endRuns;
+        private bool scheduler = false;
+
         public DroneControlService()
         {
             outQueue = new Queue<string>();
@@ -208,6 +212,22 @@ namespace WebUI.Data
             lng = targetLng;
         }
 
+        public void StartScheduler(TimeOnly startTime, TimeOnly endTime)
+        {
+            startRuns = startTime;
+            endRuns = endTime;
+
+            scheduler = true;
+
+            LogMessage("Automated Drone Scheduled Enabled.");
+        }
+
+        public void CancelScheduler()
+        {
+            scheduler = false;
+            LogMessage("Automated Drone Scheduled Disabled.");
+        }
+
         public void RestartDroneService()
         {
             try {
@@ -282,7 +302,10 @@ namespace WebUI.Data
                                     // ok now do something
                                     lock (inQueue)
                                     {
-                                        inQueue.Enqueue(message);
+                                        if (message != "SilentAck")
+                                        {
+                                            inQueue.Enqueue(message);
+                                        }
                                     }
 
                                     if (message == "Successful Shutdown Drone Control.")
@@ -553,6 +576,23 @@ namespace WebUI.Data
                             lock (imagePath)
                             {
                                 imagePath = "/icons/stream_default.png";
+                            }
+                        }
+
+                        if (scheduler)
+                        {
+                            TimeOnly now = TimeOnly.FromTimeSpan(DateTime.Now.TimeOfDay);
+                            if (now > startRuns && now < endRuns)
+                            {
+                                if (soh_battery != "N/A" && soh_state == "Idle")
+                                {
+                                    if (Int32.Parse(soh_battery) > 90)
+                                    {
+                                        SendCommand("AutomatedSurvey");
+                                        startRuns.AddMinutes(5);
+                                        Thread.Sleep(500);
+                                    }
+                                }
                             }
                         }
 

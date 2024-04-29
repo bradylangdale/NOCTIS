@@ -24,6 +24,7 @@
 <p><label>@("DCS Response: " + response)</label></p>
 
 <h5>State of Health</h5>
+<p>
 <div><label>@("Connection - " + connection)</label></div>
 <div><label>@("State - " + state)</label></div>
 <div><label>@("Battery Level - " + battery + "%")</label></div>
@@ -36,8 +37,35 @@
 <div><label>@("Vertical Camera - " + vert)</label></div>
 <div><label>@("Latitude: " + lat)</label></div>
 <div><label>@("Longitude: " + lng)</label></div>
+</p>
+
+<h5>Scheduler</h5>
+<p>
+<div><label>Start Time</label></div>
+<div class="m-2">
+    <input class="form-control" type="time" @bind=startTime.Time />
+</div>
+
+<div><label>End Time</label></div>
+<div class="m-2">
+    <input class="form-control" type="time" @bind=endTime.Time />
+</div>
+
+<button @onclick="Schedule">Start Scheduler</button>
+<button @onclick="StopScheduler">Stop Scheduler</button>
+</p>
 
 @code {
+    private TimePicker startTime = new TimePicker();
+    private TimePicker endTime = new TimePicker();
+
+    public class TimePicker
+    {
+        public TimeOnly Time { get; set; }
+        public DateTime DateAndTime { get; set; }
+        public DateOnly Date { get; set; }
+    }
+
     public string imagePath = "N/A"; 
     private Timer timer = new Timer(1000);
 
@@ -60,6 +88,16 @@
         timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
         timer.AutoReset = true;
         timer.Start(); 
+    }
+
+    public void Schedule()
+    {
+        drone.StartScheduler(startTime.Time, endTime.Time);
+    }
+
+    public void StopScheduler()
+    {
+        drone.CancelScheduler();
     }
 
     public void Connect()
