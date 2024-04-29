@@ -547,6 +547,8 @@ class DroneHandler(olympe.EventListener):
                 self.repositioning()
             elif self.state == DroneState.Charging:
                 self.charging()
+        
+        self.flight_thread = None
 
     def charging(self):
         self.state = DroneState.Idling

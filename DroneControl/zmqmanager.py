@@ -54,18 +54,18 @@ class ZMQManager:
 
                 socket.send_string('SilentAck')
 
-                #if self.drone.flight_thread is not None:
-                #    self.drone.state = DroneState.Idling
-                #    self.drone.flight_thread.join()
-                
-                #if not self.drone.thermal_state:
-                #    self.drone.toggle_thermal()
+                if self.drone.flight_thread is None:
+                    #    self.drone.state = DroneState.Idling
+                    #    self.drone.flight_thread.join()
+                    
+                    #if not self.drone.thermal_state:
+                    #    self.drone.toggle_thermal()
 
-                self.drone.state = DroneState.TakingOff
-                self.drone.flight_thread = Thread(target=self.drone.fly)
-                self.drone.flight_thread.start()
+                    self.drone.state = DroneState.TakingOff
+                    self.drone.flight_thread = Thread(target=self.drone.fly)
+                    self.drone.flight_thread.start()
 
-                self.log('Starting Automated Survey.')
+                    self.log('Starting Automated Survey.')
 
             elif message == 'ReturnHome':
 

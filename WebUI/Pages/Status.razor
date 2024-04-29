@@ -39,7 +39,7 @@
 <div><label>@("Longitude: " + lng)</label></div>
 </p>
 
-<h5>Scheduler</h5>
+<h5>@("Scheduler - " + scheduled)</h5>
 <p>
 <div><label>Start Time</label></div>
 <div class="m-2">
@@ -83,8 +83,22 @@
     private string lng = "N/A";
     private string state = "N/A";
 
+    private string scheduled = "Disabled";
+
     protected override void OnInitialized()
     {
+        startTime.Time = drone.GetStartTime();
+        endTime.Time = drone.GetEndTime();
+
+        if (drone.IsSchedulerEnabled())
+        {
+            scheduled = "Enabled";
+        } else {
+            scheduled = "Disabled";
+        }
+
+        StateHasChanged();
+
         timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
         timer.AutoReset = true;
         timer.Start(); 
@@ -184,6 +198,7 @@
                 drone.GetSOH(ref connection, ref battery, ref cams,
                     ref imu, ref mag, ref baro, ref gps,
                     ref ultra, ref vert, ref lat, ref lng, ref state);
+
                 StateHasChanged();
             } catch (Exception e) {
                 Console.WriteLine(e);

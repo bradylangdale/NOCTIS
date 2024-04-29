@@ -212,6 +212,21 @@ namespace WebUI.Data
             lng = targetLng;
         }
 
+        public TimeOnly GetStartTime()
+        {
+            return startRuns;
+        }
+
+        public TimeOnly GetEndTime()
+        {
+            return endRuns;
+        }
+
+        public bool IsSchedulerEnabled()
+        {
+            return scheduler;
+        }
+
         public void StartScheduler(TimeOnly startTime, TimeOnly endTime)
         {
             startRuns = startTime;
@@ -579,19 +594,25 @@ namespace WebUI.Data
                             }
                         }
 
-                        if (scheduler)
+                        lock (startRuns)
                         {
-                            TimeOnly now = TimeOnly.FromTimeSpan(DateTime.Now.TimeOfDay);
-                            if (now > startRuns && now < endRuns)
+                            if (scheduler)
                             {
-                                if (soh_battery != "N/A" && soh_state == "Idle")
+                                TimeOnly now = TimeOnly.FromTimeSpan(DateTime.Now.TimeOfDay);
+                                if (now > startRuns && now < endRuns)
                                 {
-                                    if (Int32.Parse(soh_battery) > 90)
+                                    if (soh_battery != "N/A" && soh_state == "Idle")
                                     {
-                                        SendCommand("AutomatedSurvey");
-                                        startRuns.AddMinutes(5);
-                                        Thread.Sleep(500);
+                                        if (Int32.Parse(soh_battery) > 90)
+                                        {
+                                            SendCommand("AutomatedSurvey");
+                                            startRuns.AddMinutes(5);
+                                            Thread.Sleep(500);
+                                        }
                                     }
+                                } else if (now > endRuns)
+                                {
+                                    scheduler = false;
                                 }
                             }
                         }
