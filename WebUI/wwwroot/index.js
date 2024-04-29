@@ -38,13 +38,13 @@ function initGeofenceEditor() {
     drawingManager.setMap(map);
 
     droneMarker = new google.maps.Marker({
-        position: { lat: 30.70439747044987, lng: -96.32200039372728 },
+        position: { lat: -50, lng: -50 },
         map,
         icon: "icons/anafi-usa.png",
     });
 
     targetMarker = new google.maps.Marker({
-        position: { lat: 30.70439747044987, lng: -96.32200039372728 },
+        position: { lat: -50, lng: -50 },
         map,
         icon: "icons/target.png",
     });
