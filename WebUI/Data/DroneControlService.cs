@@ -43,6 +43,9 @@ namespace WebUI.Data
         private string soh_lat = "N/A";
         private string soh_lng = "N/A";
 
+        private string targetLat = "N/A";
+        private string targetLng = "N/A";
+
         public DroneControlService()
         {
             outQueue = new Queue<string>();
@@ -195,6 +198,12 @@ namespace WebUI.Data
         {
             lat = soh_lat;
             lng = soh_lng;
+        }
+
+        public void GetTargetPosition(ref string lat, ref string lng)
+        {
+            lat = targetLat;
+            lng = targetLng;
         }
 
         public void RestartDroneService()
@@ -397,6 +406,33 @@ namespace WebUI.Data
                                         RestartDroneService();
                                         break;
                                     }
+                                } else if (line.Contains("TARGET: "))
+                                {
+                                    string[] data = line.Replace("TARGET: ", "").Split(",");
+
+                                    lock (targetLat)
+                                    {
+                                        targetLat = data[0];
+                                    }
+
+                                    lock (targetLng)
+                                    {
+                                        targetLng = data[1];
+                                    }
+
+                                    client.SendFrame("CheckLogs");
+
+                                    line = "";
+                                    if (!client.TryReceiveFrameString(TimeSpan.FromSeconds(TIMEOUT), out line))
+                                    {
+                                        LogMessage("Drone Control Service took too long to respond forcing restart.", "ERROR");
+                                        StreamState(false);
+                                        Thread.Sleep(500);
+                                        running = false;
+                                        RestartDroneService();
+                                        break;
+                                    }
+
                                 } else 
                                 {
                                     if (line.Contains("LOG: Connected to the Skycontroller."))

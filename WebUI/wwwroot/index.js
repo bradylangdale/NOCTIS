@@ -4,6 +4,7 @@ var markers = [];
 var lines = [];
 var map = null;
 var droneMarker = null;
+var targetMarker = null;
 
 // TODO: replace the hard coded lat and long with something more customizable
 function initGeofenceEditor() {
@@ -40,6 +41,12 @@ function initGeofenceEditor() {
         position: { lat: 30.70439747044987, lng: -96.32200039372728 },
         map,
         icon: "icons/anafi-usa.png",
+    });
+
+    targetMarker = new google.maps.Marker({
+        position: { lat: 30.70439747044987, lng: -96.32200039372728 },
+        map,
+        fillColor: "#fbff00",
     });
 
     for (let i = 0; i < polygons.length; i++)
@@ -411,6 +418,12 @@ window.geofenceEditor = {
     {   
         var data = JSON.parse(pos);
         droneMarker.setPosition({ lat: data[0], lng: data[1] });
+    },
+
+    setTargetPos: function(pos)
+    {
+        var data = JSON.parse(pos);
+        targetMarker.setPosition({ lat: data[0], lng: data[1] });
     },
 };
 

@@ -98,6 +98,10 @@
 
                 string pos = "[ " + lat + ", " + lng + " ]";
                 JSRuntime.InvokeVoidAsync("geofenceEditor.setDronePos", pos);
+
+                drone.GetTargetPosition(ref lat, ref lng);
+                pos = "[ " + lat + ", " + lng + " ]";
+                JSRuntime.InvokeVoidAsync("geofenceEditor.setTargetPos", pos);
             } catch (Exception e) {
                 Console.WriteLine(e);
             }

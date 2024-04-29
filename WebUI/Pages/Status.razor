@@ -15,6 +15,8 @@
 <button @onclick="Connect">Connect</button>
 <button @onclick="Disconnect">Disconnect</button>
 <button @onclick="Survey">Survey</button>
+<button @onclick="Land">Land</button>
+<button @onclick="ReturnHome">Return Home</button>
 <button @onclick="Restart">Restart DCS</button>
 <button @onclick="Thermal">Toggle Thermal</button>
 <button @onclick="Detection">Toggle Detection</button>
@@ -81,6 +83,24 @@
     public void Survey()
     {
         drone.SendCommand("Survey");
+
+        while (!drone.CheckResponses(ref response));
+
+        StateHasChanged();
+    }
+
+    public void Land()
+    {
+        drone.SendCommand("Land");
+
+        while (!drone.CheckResponses(ref response));
+
+        StateHasChanged();
+    }
+
+    public void ReturnHome()
+    {
+        drone.SendCommand("ReturnHome");
 
         while (!drone.CheckResponses(ref response));
 

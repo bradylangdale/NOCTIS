@@ -40,9 +40,39 @@ class ZMQManager:
 
                 socket.send_string('ECHO: Survey')
 
+                if self.drone.flight_thread is not None:
+                    self.drone.state = DroneState.Idling
+                    self.drone.flight_thread.join()
+                
                 self.drone.state = DroneState.TakingOff
-                Thread(target=self.drone.fly).start()
+                self.drone.flight_thread = Thread(target=self.drone.fly)
+                self.drone.flight_thread.start()
+
                 self.log('Starting Automated Survey.')
+
+            elif message == 'ReturnHome':
+
+                socket.send_string('ECHO: ReturnHome')
+
+                if self.drone.flight_thread is not None:
+                    self.drone.state = DroneState.Idling
+                    self.drone.flight_thread.join()
+
+                self.drone.state = DroneState.Returning
+                self.drone.flight_thread = Thread(target=self.drone.fly)
+                self.drone.flight_thread.start()
+
+            elif message == 'Land':
+                
+                socket.send_string('ECHO: Land')
+
+                if self.drone.flight_thread is not None:
+                    self.drone.state = DroneState.Idling
+                    self.drone.flight_thread.join()
+
+                self.drone.state = DroneState.Landing
+                self.drone.flight_thread = Thread(target=self.drone.fly)
+                self.drone.flight_thread.start()
 
             elif message == 'GetCurrentFrame':
                 socket.send_string(str(self.drone.display_num.value))
