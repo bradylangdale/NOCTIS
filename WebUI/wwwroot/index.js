@@ -46,7 +46,7 @@ function initGeofenceEditor() {
     targetMarker = new google.maps.Marker({
         position: { lat: 30.70439747044987, lng: -96.32200039372728 },
         map,
-        fillColor: "#fbff00",
+        icon: "icons/target.png",
     });
 
     for (let i = 0; i < polygons.length; i++)

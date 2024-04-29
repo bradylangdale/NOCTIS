@@ -29,14 +29,6 @@
 
     protected override void OnInitialized()
     {
-        drone.GetDronePosition(ref lat, ref lng);
-        
-        if (lat != "N/A" && lng != "N/A")
-        {
-            string pos = "[ " + lat + ", " + lng + " ]";
-            JSRuntime.InvokeVoidAsync("geofenceEditor.centerMap", pos);
-        }
-
         timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
         timer.AutoReset = true;
         timer.Start(); 
@@ -106,6 +98,15 @@
 
             await JSRuntime.InvokeVoidAsync("geofenceEditor.setData", data);
             await JSRuntime.InvokeVoidAsync("initGeofenceEditor", null);
+
+            drone.GetDronePosition(ref lat, ref lng);
+        
+            if (lat != "N/A" && lng != "N/A")
+            {
+                string pos = "[ " + lat + ", " + lng + " ]";
+                await JSRuntime.InvokeVoidAsync("geofenceEditor.centerMap", pos);
+            }
+
             StateHasChanged();
         }
 

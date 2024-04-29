@@ -57,6 +57,8 @@ DRONE_RTSP_PORT = os.environ.get("DRONE_RTSP_PORT", '554')
 
 JPG_QUALITY = [int(cv2.IMWRITE_JPEG_QUALITY), 40]
 
+YOLO_CLASSES = [0, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+
 class DroneState(IntEnum):
     Idling = 0
     TakingOff = 1
@@ -422,11 +424,17 @@ class DroneHandler(olympe.EventListener):
         if current_mode == CameraMode.Visible:
             time.sleep(0.1)
         elif current_mode == CameraMode.VisibleDetect:
-            results = self.visible_model.predict(source=frame, imgsz=224, verbose=False)
+            results = self.visible_model.predict(source=frame,
+                                                 imgsz=224,
+                                                 verbose=False,
+                                                 classes=YOLO_CLASSES)
 
             if len(results[0].boxes) > 0:
-                #print(results[0].boxes)
-                target = results[0].boxes[0].xyxy[0]
+                confidence = results[0].boxes.conf.tolist()
+                max_conf = max(confidence)
+                index = confidence.index(max_conf)
+
+                target = results[0].boxes[index].xyxy[0]
                 self.object_detected.value = True
 
                 self.object_px.value = int((target[0] + target[2]) / 2)
@@ -452,10 +460,17 @@ class DroneHandler(olympe.EventListener):
 
             frame = frame[y1:y2, x1:x2]
 
-            results = self.visible_model.predict(source=frame, imgsz=224, verbose=False)
+            results = self.visible_model.predict(source=frame,
+                                                 imgsz=224, 
+                                                 verbose=False,
+                                                 classes=YOLO_CLASSES)
 
             if len(results[0].boxes) > 0:
-                target = results[0].boxes[0].xyxy[0]
+                confidence = results[0].boxes.conf.tolist()
+                max_conf = max(confidence)
+                index = confidence.index(max_conf)
+
+                target = results[0].boxes[index].xyxy[0]
                 self.object_detected.value = True
 
                 self.object_px.value = int((target[0] + target[2]) / 2)
