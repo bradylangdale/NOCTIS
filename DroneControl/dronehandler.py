@@ -100,7 +100,7 @@ class DroneHandler(olympe.EventListener):
 
         self.display_num = self.manager.Value(c_int8, -1)
 
-        self.need_video_restart = False
+        self.need_restart = False
         self.video_thread = None
 
         self.running = self.manager.Value(c_bool, False)
@@ -145,8 +145,16 @@ class DroneHandler(olympe.EventListener):
             with open('../DroneControl/data/dcs.json', 'w') as f:
                 json.dump(self.nonvolatile, f)
 
-        if not(self.state == DroneState.Idling or self.state == DroneState.Charging):
-            self.state = DroneState.Error
+        if not(self.state == DroneState.Idling or self.state == DroneState.Charging):   
+            try:
+                flying_state = self.drone.get_state(FlyingStateChanged)['state']
+                if flying_state != 'landed':  
+                    self.state = DroneState.Error
+                else:
+                    self.state = DroneState.Idling
+            except Exception as e:
+                if self.nonvolatile['last_position']['altitude'] > 0.75:
+                    self.state = DroneState.Error
 
         # Load the visible model
         self.visible_model = YOLO('../DroneControl/models/yolov5-visible.onnx', verbose=False)
@@ -164,7 +172,7 @@ class DroneHandler(olympe.EventListener):
 
             if reattempt:
                 self.zmqmanager.log('Skycontroller has not reconnected with the drone, retrying 10 seconds.', level='ERROR')
-                self.need_video_restart = True
+                self.need_restart = True
                 time.sleep(9)
 
             return True
@@ -217,10 +225,10 @@ class DroneHandler(olympe.EventListener):
                 if self.last_connection_state:
                     self.zmqmanager.log('Drone connection successful!', level='SUCCESS')
 
-                    if self.need_video_restart:
+                    if self.need_restart:
                         self.zmqmanager.log('Drone Control requires full restart. Restarting now!', level='WARNING')
 
-                        self.need_video_restart = False
+                        self.need_restart = False
                 else:
                     self.zmqmanager.log('Drone connection failed!', level='ERROR')
                     self.running.value = False
@@ -273,6 +281,12 @@ class DroneHandler(olympe.EventListener):
                     self.flight_thread.start()
 
                 self.nonvolatile['state'] = int(self.state)
+
+                if self.state not in [DroneState.Charging, DroneState.Idling]:
+                    try:
+                        self.nonvolatile['last_position'] = self.drone.get_state(PositionChanged)
+                    except Exception as e:
+                        self.zmqmanager.log('Heartbeat failed to grab latest position likely not a problem.', level='WARNING')
 
                 with open('../DroneControl/data/dcs.json', 'w') as f:
                     json.dump(self.nonvolatile, f)
@@ -343,12 +357,17 @@ class DroneHandler(olympe.EventListener):
                     self.zmqmanager.log("Vertical Camera is reporting UNHEALTHY!", level='ERROR')
                     vert = "Unhealthy"
 
-                if self.state in [DroneState.Charging, DroneState.Idling, DroneState.Repositioning]:
-                    position = self.drone.get_state(HomeChanged)
-                    lat = position['latitude']
-                    lng = position['longitude']
-                elif self.state != DroneState.Error:
-                    position = self.drone.get_state(PositionChanged)
+                try:
+                    if self.state in [DroneState.Charging, DroneState.Idling, DroneState.Repositioning]:
+                        position = self.drone.get_state(HomeChanged)
+                        lat = position['latitude']
+                        lng = position['longitude']
+                    elif self.state != DroneState.Error:
+                        position = self.drone.get_state(PositionChanged)
+                        lat = position['latitude']
+                        lng = position['longitude']
+                except Exception as e:
+                    position = self.nonvolatile['last_position']
                     lat = position['latitude']
                     lng = position['longitude']
 
@@ -654,15 +673,15 @@ class DroneHandler(olympe.EventListener):
 
         self.state = DroneState.Returning
 
-    # TODO: adjust w, h, deg_pix for thermal/visible camera
     def get_target_gps(self):
-        # thermal
-        #w = 780
-        #h = 610
-        w = 1280
-        h = 720
-        deg_pix = 50 / 1280.0
-        #deg_pix = 0.064102564   # 50 degrees HFOV 780 pixels
+        if CameraMode(self.camera_mode.value) == CameraMode.ThermalDetect:
+            w = 780
+            h = 610
+            deg_pix = 50 / w
+        else:
+            w = 1280
+            h = 720
+            deg_pix = 50 / w # might be different for the visual camera
 
         px = self.object_px.value
         py = self.object_py.value
@@ -672,25 +691,25 @@ class DroneHandler(olympe.EventListener):
 
         gimbal_vec = self.drone.get_state(attitude)[0]
 
-        print(rel_pitch)
-        print(rel_yaw)
+        #print(rel_pitch)
+        #print(rel_yaw)
 
-        target_pitch = min(90 - abs(gimbal_vec['pitch_absolute'] + rel_pitch), 85)
+        target_pitch = min(90 - abs(gimbal_vec['pitch_absolute'] + rel_pitch), 89)
         target_yaw = gimbal_vec['yaw_absolute'] + rel_yaw
 
         position = self.drone.get_state(PositionChanged)
         
         length = abs(position['altitude'] * math.tan(math.radians(target_pitch)))
 
-        dy = length * math.sin(math.radians(target_yaw))
-        dx = length * math.cos(math.radians(target_yaw))
+        dy = length * math.cos(math.radians(target_yaw))
+        dx = length * math.sin(math.radians(target_yaw))
 
-        latitude  = position['latitude']  - (dy / 111111.0)
+        latitude  = position['latitude'] + (dy / 111111.0)
         longitude = position['longitude'] - (dx / (111111.0 * math.cos(math.radians(position['latitude']))))
 
         return [ latitude, longitude ]
 
-    def get_tracking_pos(self, target, position, radius=4):
+    def get_tracking_pos(self, target, position, radius=5):
         r = radius / 111111.0
 
         dx = position['latitude'] - target[0]
@@ -705,14 +724,17 @@ class DroneHandler(olympe.EventListener):
         position = self.drone.get_state(PositionChanged)
         tracking_pos = self.get_tracking_pos(target, position)
 
+        self.drone(StopPilotedPOI()).wait().success()
+        self.drone(StartPilotedPOIV2(target[0], target[1], 1, mode='locked_gimbal')).wait().success()
+        time.sleep(3)
+
         detected = True
         while detected:
             detected = False
 
             self.zmqmanager.log(f'Moving to target position.')
-            self.drone(StopPilotedPOI()).wait().success()
             flying = self.drone(
-                moveTo(tracking_pos[0], tracking_pos[1], 5, MoveTo_Orientation_mode.TO_TARGET, 0)
+                moveTo(tracking_pos[0], tracking_pos[1], 5, MoveTo_Orientation_mode.NONE, 0)
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 )
 
@@ -727,11 +749,17 @@ class DroneHandler(olympe.EventListener):
                         position = self.drone.get_state(PositionChanged)
                         tracking_pos = self.get_tracking_pos(target, position)
 
+                        self.drone(StopPilotedPOI()).wait().success()
+                        self.drone(StartPilotedPOIV2(target[0], target[1], 1, mode='locked_gimbal')).wait().success()
+                        time.sleep(3)
+
                         detected = True
                         break
 
+
             if not detected:
                 self.zmqmanager.log(f'Reached target position!')
+                self.drone(StopPilotedPOI()).wait().success()
                 self.drone(StartPilotedPOIV2(target[0], target[1], 1, mode='locked_gimbal')).wait().success()
                 self.zmqmanager.log(f'Scanning for target...')
                 time.sleep(3)
@@ -766,7 +794,12 @@ class DroneHandler(olympe.EventListener):
         if self.thermal_state:
             self.toggle_thermal()
 
-        position = self.drone.get_state(PositionChanged)
+        try:
+            position = self.drone.get_state(PositionChanged)
+        except Exception as e:
+            position = self.nonvolatile['last_position']
+            self.zmqmanager.log('Failed to grab latest position fallback to last saved position.', level='WARNING')
+
         return_path = self.geofencemanager.get_path([position['latitude'], position['longitude']],
                                                     [self.start_lat, self.start_lng])
 
@@ -786,7 +819,7 @@ class DroneHandler(olympe.EventListener):
                 self.zmqmanager.log('The Returning state was interrupted.', level='WARNING')
                 return
 
-        self.zmqmanager.log('Drone has made it home. Landing!', level='SUCCESS')
+        self.zmqmanager.log('Drone has made it home. Beginning landing process!', level='SUCCESS')
 
         self.state = DroneState.Landing
 
@@ -860,7 +893,7 @@ class DroneHandler(olympe.EventListener):
             
                 self.zmqmanager.log('Correction ' + str(i + 1) + ' of ' + str(corrections) + ' complete!', level='SUCCESS')
             else:
-                self.zmqmanager.log('AruCo marker not found! Lowering height.', level='WARNING')
+                self.zmqmanager.log('AruCo marker not found! Adjusting height.', level='WARNING')
                 
                 self.drone(
                     moveTo(self.start_lat, self.start_lng, decent_amount,
@@ -873,6 +906,50 @@ class DroneHandler(olympe.EventListener):
                 time.sleep(3)
             else:
                 time.sleep(1)
+        
+        # last check of AruCo offset
+        self.zmqmanager.log('Drone checking AruCo marker position.', level='LOG')
+        
+        detections = 0
+        dx = 0
+        dy = 0
+        dyaw = 0
+        for j in range(25):
+            # detect ArUco markers in the input frame
+            if not RPI:
+                (corners, ids, rejected) = detector.detectMarkers(self.current_frame[0])
+            else:
+                (corners, ids, rejected) = cv2.aruco.detectMarkers(self.current_frame[0], arucoDict, parameters=arucoParams)
+
+            if ids is not None and len(ids) > 0:
+                _dx, _dy, _dyaw = self.estimatePoseSingleMarkers(corners, markerSizeInM, mtx, dist)
+                dx += _dx
+                dy += _dy
+                dyaw += _dyaw
+                detections += 1
+
+            time.sleep(0.05)
+
+        if detections > 0:
+            dx /= detections
+            dy /= detections
+            dyaw /= detections
+
+            self.zmqmanager.log('AruCo marker scan completed with ' + str(detections) + ' detections!', level='SUCCESS')
+
+            if abs(dx) > 0.01 or abs(dy) > 0.01 or abs(dyaw) > 0.01:
+                self.zmqmanager.log('AruCo is off center, additionally correction is needed!', level='WARNING')
+
+                self.drone(
+                    moveBy(dx - 0.02, dy, decent_amount, dyaw)
+                    >> moveByChanged(status='DONE', _timeout=10, _float_tol=(1e-05, 1e-06))
+                ).wait().success()
+            
+                self.zmqmanager.log('Final correction complete!', level='SUCCESS')
+            else:
+                self.zmqmanager.log('Drone is centered over the base station!', level='SUCCESS')
+        else:
+           self.zmqmanager.log('AruCo Marker not detected... Something must be wrong.', level='ERROR') 
 
         self.zmqmanager.log('Drone is landing!', level='LOG')
 

@@ -16,6 +16,7 @@
 <button @onclick="GeneratePath">Generate Path</button>
 <button @onclick="GenerateSurvey">Generate Survey</button>
 <button @onclick="ClearMarkers">Clear Markers</button>
+<button @onclick="CenterMap">Center Map</button>
 </p>
 <div id="map" style="height:calc(100vh - 14rem);width:100%;"></div>
 
@@ -28,9 +29,30 @@
 
     protected override void OnInitialized()
     {
+        drone.GetDronePosition(ref lat, ref lng);
+        
+        if (lat != "N/A" && lng != "N/A")
+        {
+            string pos = "[ " + lat + ", " + lng + " ]";
+            JSRuntime.InvokeVoidAsync("geofenceEditor.centerMap", pos);
+        }
+
         timer.Elapsed += (sender, eventArgs) => OnTimerCallback();
         timer.AutoReset = true;
         timer.Start(); 
+    }
+    
+    public async void CenterMap()
+    {
+        drone.GetDronePosition(ref lat, ref lng);
+        
+        if (lat != "N/A" && lng != "N/A")
+        {
+            string pos = "[ " + lat + ", " + lng + " ]";
+            await JSRuntime.InvokeVoidAsync("geofenceEditor.centerMap", pos);
+
+            StateHasChanged();
+        }
     }
 
     public async void SaveGeofence()

@@ -425,6 +425,12 @@ window.geofenceEditor = {
         var data = JSON.parse(pos);
         targetMarker.setPosition({ lat: data[0], lng: data[1] });
     },
+
+    centerMap: function(pos)
+    {
+        var data = JSON.parse(pos);
+        map.setCenter({ lat: data[0], lng: data[1] });
+    },
 };
 
 window.logging = {
