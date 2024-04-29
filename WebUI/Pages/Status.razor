@@ -107,11 +107,19 @@
     public void Schedule()
     {
         drone.StartScheduler(startTime.Time, endTime.Time);
+
+        scheduled = "Enabled";
+
+        StateHasChanged();
     }
 
     public void StopScheduler()
     {
         drone.CancelScheduler();
+
+        scheduled = "Disabled";
+
+        StateHasChanged();
     }
 
     public void Connect()
