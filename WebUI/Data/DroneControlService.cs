@@ -42,6 +42,7 @@ namespace WebUI.Data
         private string soh_vert = "N/A";
         private string soh_lat = "N/A";
         private string soh_lng = "N/A";
+        private string soh_state = "N/A";
 
         private string targetLat = "N/A";
         private string targetLng = "N/A";
@@ -179,7 +180,7 @@ namespace WebUI.Data
 
         public void GetSOH(ref string con, ref string bat, ref string cam,
             ref string imu, ref string mag, ref string baro, ref string gps,
-            ref string ultra, ref string vert, ref string lat, ref string lng)
+            ref string ultra, ref string vert, ref string lat, ref string lng, ref string state)
         {
             con = soh_connection;
             bat = soh_battery;
@@ -192,6 +193,7 @@ namespace WebUI.Data
             vert = soh_vert;
             lat = soh_lat;
             lng = soh_lng;
+            state = soh_state;
         }
 
         public void GetDronePosition(ref string lat, ref string lng)
@@ -372,6 +374,40 @@ namespace WebUI.Data
                                     soh_vert = soh[8];
                                     soh_lat = soh[9];
                                     soh_lng = soh[10];
+                                    
+                                    switch (soh[11])
+                                    {
+                                        case "0":
+                                            soh_state = "Idle";
+                                            break;
+                                        case "1":
+                                            soh_state = "Taking Off";
+                                            break;                                        
+                                        case "2":
+                                            soh_state = "Surveying";
+                                            break;   
+                                        case "3":
+                                            soh_state = "Chasing";
+                                            break;   
+                                        case "4":
+                                            soh_state = "Returning";
+                                            break;   
+                                        case "5":
+                                            soh_state = "Landing";
+                                            break;   
+                                        case "6":
+                                            soh_state = "Repositioning";
+                                            break;   
+                                        case "7":
+                                            soh_state = "Charging";
+                                            break;   
+                                        case "8":
+                                            soh_state = "Error";
+                                            break;
+                                        default:
+                                            soh_state = "Unknown";
+                                            break;
+                                    }
 
                                     client.SendFrame("CheckLogs");
 

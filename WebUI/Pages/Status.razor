@@ -25,6 +25,7 @@
 
 <h5>State of Health</h5>
 <div><label>@("Connection - " + connection)</label></div>
+<div><label>@("State - " + state)</label></div>
 <div><label>@("Battery Level - " + battery + "%")</label></div>
 <div><label>@("Cameras - " + cams)</label></div>
 <div><label>@("IMU - " + imu)</label></div>
@@ -52,6 +53,7 @@
     private string vert = "N/A"; 
     private string lat = "N/A";
     private string lng = "N/A";
+    private string state = "N/A";
 
     protected override void OnInitialized()
     {
@@ -143,7 +145,7 @@
             try {
                 drone.GetSOH(ref connection, ref battery, ref cams,
                     ref imu, ref mag, ref baro, ref gps,
-                    ref ultra, ref vert, ref lat, ref lng);
+                    ref ultra, ref vert, ref lat, ref lng, ref state);
                 StateHasChanged();
             } catch (Exception e) {
                 Console.WriteLine(e);

@@ -153,8 +153,7 @@ class DroneHandler(olympe.EventListener):
                 else:
                     self.state = DroneState.Idling
             except Exception as e:
-                if self.nonvolatile['last_position']['altitude'] > 0.75:
-                    self.state = DroneState.Error
+                self.state = DroneState.Error
 
         # Load the visible model
         self.visible_model = YOLO('../DroneControl/models/yolov5-visible.onnx', verbose=False)
@@ -246,13 +245,13 @@ class DroneHandler(olympe.EventListener):
                     self.zmqmanager.log(str(target[0]) + "," + str(target[1]), level='TARGET')
 
                 # check battery level
-                battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
+                self.battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
 
-                if battery_level % 10 == 0 or battery_level != last_bat:
-                    if battery_level % 10 == 0 and battery_level != last_bat:
-                        self.zmqmanager.log('Battery Level at ' + str(battery_level) + '%', level='WARNING')
+                if self.battery_level % 10 == 0 or self.battery_level != last_bat:
+                    if self.battery_level % 10 == 0 and self.battery_level != last_bat:
+                        self.zmqmanager.log('Battery Level at ' + str(self.battery_level) + '%', level='WARNING')
 
-                    if battery_level != last_bat and battery_level <= 10:
+                    if self.battery_level != last_bat and self.battery_level <= 10:
                         if self.state == DroneState.Idling and self.state != DroneState.Charging:
                             if self.flight_thread is not None:
                                 self.state = DroneState.Idling
@@ -267,7 +266,7 @@ class DroneHandler(olympe.EventListener):
                             self.state = DroneState.Error
                             self.zmqmanager.log('Drone Control requires full restart. Restarting now!', level='WARNING')
                 
-                    last_bat = battery_level
+                    last_bat = self.battery_level
                 
                 if self.state == DroneState.Error:
                     self.zmqmanager.log('Drone Control reset during flight, forcing drone to return home!', level='ERROR')
@@ -371,9 +370,9 @@ class DroneHandler(olympe.EventListener):
                     lat = position['latitude']
                     lng = position['longitude']
 
-                self.zmqmanager.log(f'Connected,{battery_level},{cams},{imu},{mag},{baro},{gps},{ultra},{vert},{lat},{lng}', level='SOH')
+                self.zmqmanager.log(f'Connected,{self.battery_level},{cams},{imu},{mag},{baro},{gps},{ultra},{vert},{lat},{lng},{self.state}', level='SOH')
             else:
-                self.zmqmanager.log(f'Disconnected,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A', level='SOH')
+                self.zmqmanager.log(f'Disconnected,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,0', level='SOH')
 
             
             time.sleep(1)
@@ -539,8 +538,7 @@ class DroneHandler(olympe.EventListener):
 
     def takingoff(self):
         # check battery level
-        battery_level = self.drone.get_state(BatteryStateChanged)["percent"]
-        if battery_level < 5:
+        if self.battery_level < 5:
             self.state = DroneState.Charging
             self.zmqmanager.log('Drone needs to charge.', level='WARNING')
             return
@@ -654,17 +652,21 @@ class DroneHandler(olympe.EventListener):
                     self.zmqmanager.log('The Surveying state was interrupted.', level='WARNING')
                     return
 
+                if self.battery_level < 15:
+                    self.zmqmanager.log('Drone battery level is below 25 percent returning for recharge', level='WARNING')
+                    self.state = DroneState.Returning
+
                 if self.object_detected.value:
-                    self.zmqmanager.log('Target detected!', level='LOG')
+                    #self.zmqmanager.log('Target detected!', level='LOG')
                     target_coord = self.get_target_gps()
 
                     if self.geofencemanager.check_in_bounds(target_coord):
-                        self.zmqmanager.log('Pursuing target!', level='LOG')
+                        self.zmqmanager.log('Pursuing a target!', level='LOG')
                         self.drone(CancelMoveTo()).wait().success()
                         self.state = DroneState.Chasing
                         return
-                    else:
-                        self.zmqmanager.log('Target out of bounds!', level='LOG')
+                    #else:
+                    #    self.zmqmanager.log('Target out of bounds!', level='LOG')
 
             self.zmqmanager.log(f'Reached survey waypoint {i} of {len(survey_path)}!')
             i += 1
@@ -691,21 +693,18 @@ class DroneHandler(olympe.EventListener):
 
         gimbal_vec = self.drone.get_state(attitude)[0]
 
-        #print(rel_pitch)
-        #print(rel_yaw)
-
-        target_pitch = min(90 - abs(gimbal_vec['pitch_absolute'] + rel_pitch), 89)
-        target_yaw = gimbal_vec['yaw_absolute'] + rel_yaw
+        target_pitch = min(90 - abs(gimbal_vec['pitch_absolute'] + rel_pitch), 85)
+        target_yaw = 90 - abs(gimbal_vec['yaw_absolute'] + rel_yaw)
 
         position = self.drone.get_state(PositionChanged)
         
         length = abs(position['altitude'] * math.tan(math.radians(target_pitch)))
 
-        dy = length * math.cos(math.radians(target_yaw))
-        dx = length * math.sin(math.radians(target_yaw))
+        dy = length * math.sin(math.radians(target_yaw))
+        dx = length * math.cos(math.radians(target_yaw))
 
         latitude  = position['latitude'] + (dy / 111111.0)
-        longitude = position['longitude'] - (dx / (111111.0 * math.cos(math.radians(position['latitude']))))
+        longitude = position['longitude'] + (dx / (111111.0 * math.cos(math.radians(position['latitude']))))
 
         return [ latitude, longitude ]
 
@@ -733,10 +732,16 @@ class DroneHandler(olympe.EventListener):
             detected = False
 
             self.zmqmanager.log(f'Moving to target position.')
+
+            if not self.geofencemanager.check_in_bounds(tracking_pos):
+                tracking_pos = self.geofencemanager.move_from_edge(tracking_pos)
+
             flying = self.drone(
                 moveTo(tracking_pos[0], tracking_pos[1], 5, MoveTo_Orientation_mode.NONE, 0)
                 >> moveToChanged(status='DONE', _timeout=500, _float_tol=(1e-05, 1e-06))
                 )
+
+            time.sleep(3)
 
             while not flying.success():
                 if self.object_detected.value:
@@ -756,39 +761,17 @@ class DroneHandler(olympe.EventListener):
                         detected = True
                         break
 
-
-            if not detected:
-                self.zmqmanager.log(f'Reached target position!')
-                self.drone(StopPilotedPOI()).wait().success()
-                self.drone(StartPilotedPOIV2(target[0], target[1], 1, mode='locked_gimbal')).wait().success()
-                self.zmqmanager.log(f'Scanning for target...')
-                time.sleep(3)
-
-                for j in range(100):
-                    if self.object_detected.value:
-                        target = self.get_target_gps()
-                        position = self.drone.get_state(PositionChanged)
-                        tracking_pos = self.get_tracking_pos(target, position)
-                        
-                        self.zmqmanager.log('Target position updated!', level='LOG')
-                        detected = True
-                        break
-                    else:
-                        time.sleep(0.25)
-
-                if not self.geofencemanager.check_in_bounds(target):
-                    self.zmqmanager.log('Target has left the geofence! Returning home.', level='SUCCESS')
-                    self.drone(StopPilotedPOI()).wait().success()
-                    self.state = DroneState.Returning
-                    return
-
             if self.state != DroneState.Chasing:
                 self.zmqmanager.log('The Chasing state was interrupted.', level='WARNING')
                 return
 
-        self.zmqmanager.log('Reached targets last known location without updates returning home.', level='LOG')
-        self.drone(StopPilotedPOI()).wait().success()
-        self.state = DroneState.Returning
+        if self.battery_level > 15:
+            self.zmqmanager.log('Chase complete will now continue to survey.', level='LOG')
+            self.drone(StopPilotedPOI()).wait().success()
+            self.state = DroneState.Surveying
+        else:
+            self.zmqmanager.log('Drone battery level is below 25 percent returning for recharge', level='WARNING')
+            self.state = DroneState.Returning
 
     def returning(self):
         if self.thermal_state:
@@ -857,7 +840,7 @@ class DroneHandler(olympe.EventListener):
         corrections = 3
         decent_amount = 12.0 / corrections
         for i in range(corrections):
-            self.zmqmanager.log('Drone scanning for an AruCo marker.', level='LOG')
+            self.zmqmanager.log('Drone is beginning AruCo marker scan.', level='LOG')
             
             detections = 0
             dx = 0
